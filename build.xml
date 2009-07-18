@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Koom" default="package">
+	<!--
+	  - General.
+	  -->
+	<target name="clean" description="Clean all generated files">
+	</target>
+
+	<!--
+	  - Main.
+	  -->
+	<target name="compile" description="Compile Koom client">
+	</target>
+
+	<target name="package" depends="compile" description="Package Koom client">
+	</target>
+
+	<target name="run" depends="compile" description="Run Koom client">
+	</target>
+
+	<!--
+	  - Tests.
+	  -->
+	<target name="test" depends="compile-tests, compile" description="Run all tests">
+	</target>
+
+	<target name="compile-tests">
+	</target>
+</project>
