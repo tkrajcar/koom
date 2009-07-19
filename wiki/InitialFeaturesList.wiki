@@ -14,6 +14,7 @@
   * Weapon specs window
   * Crit status window
   * Searchable mechref database
+  * Target status window that is persistent and is updated whenever you do a 'scan' (this will be a bit tricky but i have confidences)
   * Display in status window of current target - bearing, range, arc facing, facing arc, and indication on weapon status of which range bth modifier the target is at
   * When target locked, dim weapons that are out of range and/or out of arc
   * All settings saved in profiles that can be loaded/saved, for people that go between various monitor configurations
