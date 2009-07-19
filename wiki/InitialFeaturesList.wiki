@@ -4,7 +4,8 @@
 
   * Normal client features (copy/paste, saved world list, autologin)
   * All existing THUD features (LOS computation, weapon arcs and ranges superimposed on tacmap, zoom in/out tacmap)
-  * Right click on map for options - lock target hex, lock unit, scan, etc (http://sourceforge.net/tracker/?func=detail&aid=1435575&group_id=58787&atid=488873)
+  * Right click on map for options - lock target hex,  lock unit, scan, etc (http://sourceforge.net/tracker/?func=detail&aid=1435575&group_id=58787&atid=488873)
+  * double click on point on map to change heading to precisely that point (not just hex, but point within hex)
   * Smart tacmap label drawing so mech labels are not superimposed
   * Automatically append called cons to the contacts list/tacmap if they're not in your LOS, with expiration after 60 seconds (update if re-called)
   * Full user-configurable keybind options
@@ -14,3 +15,5 @@
   * Display in status window of current target - bearing, range, arc facing, facing arc, and indication on weapon status of which range bth modifier the target is at
   * When target locked, dim weapons that are out of range and/or out of arc
   * All settings saved in profiles that can be loaded/saved, for people that go between various monitor configurations
+  * Window opacity
+  * Proxy support
