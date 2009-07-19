@@ -1,21 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="Koom" default="package">
 	<!--
+	  - Configuration.
+	  -->
+	<property name="koom.version" value="0" />
+
+	<!-- No good way to enter secrets in Ant, so a file is best. -->
+	<property file="keystore.storepass" />
+
+	<!--
 	  - General.
 	  -->
+	<target name="all" depends="clean, test, sign" description="Build for distribution" />
+
 	<target name="clean" description="Clean all generated files">
+		<delete dir="bin" />
+		<delete dir="tests/bin" />
 	</target>
 
 	<!--
 	  - Main.
 	  -->
 	<target name="compile" description="Compile Koom client">
+		<mkdir dir="bin" />
+		<javac srcdir="src" destdir="bin" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
 	</target>
 
-	<target name="package" depends="compile" description="Package Koom client">
+	<target name="update-buildnumber" if="compile.updated">
+		<buildnumber />
+		<echo>Built Koom client version ${koom.version} build ${build.number}</echo>
 	</target>
 
-	<target name="run" depends="compile" description="Run Koom client">
+	<target name="package" depends="compile, update-buildnumber" description="Package Koom client">
+		<property file="build.number" />
+		<jar destfile="koom.jar" index="yes" level="9" strict="fail">
+			<manifest>
+				<attribute name="Main-Class" value="net.feem.koom.Main" />
+
+				<attribute name="Specification-Title" value="Koom" />
+				<attribute name="Specification-Version" value="${koom.version}" />
+				<attribute name="Specification-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Implementation-Title" value="net.feem.koom" />
+				<attribute name="Implementation-Version" value="${build.number}" />
+				<attribute name="Implementation-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Sealed" value="true" />
+			</manifest>
+
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+	<target name="sign" depends="package" description="Sign Koom client">
+		<signjar jar="koom.jar" keystore="keystore" alias="koom" storepass="${storepass}" />
+	</target>
+
+	<target name="run" depends="package" description="Run Koom client">
+		<java jar="koom.jar" fork="true" />
 	</target>
 
 	<!--
