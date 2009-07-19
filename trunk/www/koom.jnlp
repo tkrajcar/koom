@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<jnlp> <!-- Set codebase and href attribute to point to this JNLP file. -->
+<jnlp> <!-- Set codebase and href attribute for this JNLP file. -->
 	<information>
-		<title>Koom client</title>
+		<title>Koom</title>
 		<vendor>Tim Krajcar</vendor>
 		<homepage href="http://code.google.com/p/koom/" />
 		<description>A Java-based BattleTech MUX graphical HUD client.</description>
