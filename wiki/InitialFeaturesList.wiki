@@ -12,6 +12,8 @@
   * Option for a 'wake trigger' - when client sees a user-defined block of text (typically something like 'wake CE') it plays a sound, raises a dialog, otherwise gets your attention
   * Armor diagram window
   * Weapon specs window
+  * Crit status window
+  * Searchable mechref database
   * Display in status window of current target - bearing, range, arc facing, facing arc, and indication on weapon status of which range bth modifier the target is at
   * When target locked, dim weapons that are out of range and/or out of arc
   * All settings saved in profiles that can be loaded/saved, for people that go between various monitor configurations
