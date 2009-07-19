@@ -11,4 +11,4 @@
   * Armor diagram window
   * Weapon specs window
   * Display in status window of current target - bearing, range, arc facing, facing arc, and indication on weapon status of which range bth modifier the target is at
-  
+  * All settings saved in profiles that can be loaded/saved, for people that go between various monitor configurations
