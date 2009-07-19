@@ -16,31 +16,33 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.feem.koom;
-
-import net.feem.koom.services.Version;
+package net.feem.koom.services;
 
 /**
- * Launcher for the Koom client.
+ * Provides abstract access to Koom version information.
  * 
  * @author cu5
  */
-public class Main {
-    /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
-     * 
-     * @param args
-     */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom (version %s, build %s)...%n", Version
-                .getVersion(), Version.getBuild());
+public class Version {
+    private static final String version;
+    private static final String build;
 
-        SessionManager manager = new SessionManager();
+    static {
+        Package koom = Package.getPackage("net.feem.koom");
 
-        // TODO: Configure manager using command line arguments here.
+        version = wrapString(koom.getSpecificationVersion());
+        build = wrapString(koom.getImplementationVersion());
+    }
 
-        new Thread(manager, "SessionManager").start();
+    private static String wrapString(String raw) {
+        return (raw == null) ? "???" : raw;
+    }
+
+    public static String getVersion() {
+        return version;
+    }
+
+    public static String getBuild() {
+        return build;
     }
 }

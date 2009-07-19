@@ -18,29 +18,25 @@
  */
 package net.feem.koom;
 
-import net.feem.koom.services.Version;
-
 /**
- * Launcher for the Koom client.
+ * A session represents a single connection's state. A session is composed of a
+ * network connection, protocol state, terminal state, HUD state, and per
+ * connection script state.
  * 
  * @author cu5
  */
-public class Main {
+public class Session implements Runnable {
     /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
-     * 
-     * @param args
      */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom (version %s, build %s)...%n", Version
-                .getVersion(), Version.getBuild());
+    public Session() {
+    }
 
-        SessionManager manager = new SessionManager();
-
-        // TODO: Configure manager using command line arguments here.
-
-        new Thread(manager, "SessionManager").start();
+    /*
+     * (non-Javadoc)
+     * 
+     * @see java.lang.Runnable#run()
+     */
+    @Override
+    public void run() {
     }
 }
