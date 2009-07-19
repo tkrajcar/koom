@@ -1,5 +1,5 @@
-/**
- * Copyright 2009 Timothy Krajcar.
+/*
+ * Copyright 2009 Tim Krajcar <allegro@conmolto.org>.
  *
  * This file is part of Koom, a BattleTech MUX graphical HUD client.
  *
@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package com.btmux.koom;
+package net.feem.koom;
 
 public class Main {
 
