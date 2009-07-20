@@ -16,31 +16,31 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.feem.koom;
-
-import net.feem.koom.services.Version;
+package net.feem.koom.ui;
 
 /**
- * Launcher for the Koom client.
+ * Base class for command binding triggers.
  * 
  * @author cu5
  */
-public class Main {
-    /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
-     * 
-     * @param args
-     */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom %s (build %s)...%n", Version
-                .getVersion(), Version.getBuild());
+abstract public class Trigger {
+    private final Object value;
 
-        SessionManager manager = new SessionManager();
+    protected Trigger(Object value) {
+        this.value = value;
+    }
 
-        // TODO: Configure manager using command line arguments here.
+    public Object getValue() {
+        return value;
+    }
 
-        new Thread(manager, "SessionManager").start();
+    @Override
+    public boolean equals(Object obj) {
+        return value.equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return value.hashCode();
     }
 }

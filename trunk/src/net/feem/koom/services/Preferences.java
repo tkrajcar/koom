@@ -16,31 +16,20 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.feem.koom;
+package net.feem.koom.services;
 
-import net.feem.koom.services.Version;
+import java.awt.Font;
 
 /**
- * Launcher for the Koom client.
+ * Preferences storage.
  * 
  * @author cu5
+ * 
  */
-public class Main {
-    /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
-     * 
-     * @param args
-     */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom %s (build %s)...%n", Version
-                .getVersion(), Version.getBuild());
+public class Preferences {
+    private static Font monoFont = new Font(Font.MONOSPACED, Font.PLAIN, 12);
 
-        SessionManager manager = new SessionManager();
-
-        // TODO: Configure manager using command line arguments here.
-
-        new Thread(manager, "SessionManager").start();
+    public static Font getMonoFont() {
+        return monoFont;
     }
 }

@@ -16,31 +16,31 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.feem.koom;
+package net.feem.koom.services;
 
-import net.feem.koom.services.Version;
+import java.io.Closeable;
+import java.io.IOException;
 
 /**
- * Launcher for the Koom client.
- * 
  * @author cu5
  */
-public class Main {
+public class Utility {
     /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
+     * Closes a closeable object, ignoring <code>null</code> values and
+     * {@link IOException}s as a convenience.
      * 
-     * @param args
+     * @param closeable
+     *            the closeable
      */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom %s (build %s)...%n", Version
-                .getVersion(), Version.getBuild());
+    public static void close(Closeable closeable) {
+        if (closeable == null) {
+            return;
+        }
 
-        SessionManager manager = new SessionManager();
-
-        // TODO: Configure manager using command line arguments here.
-
-        new Thread(manager, "SessionManager").start();
+        try {
+            closeable.close();
+        } catch (IOException ex) {
+            // Don't care.
+        }
     }
 }

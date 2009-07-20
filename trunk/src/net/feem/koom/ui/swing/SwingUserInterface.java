@@ -18,9 +18,11 @@
  */
 package net.feem.koom.ui.swing;
 
-import javax.swing.SwingUtilities;
+import javax.swing.JComponent;
 
 import net.feem.koom.Session;
+import net.feem.koom.SessionManager;
+import net.feem.koom.ui.BindingManager;
 import net.feem.koom.ui.UserInterface;
 
 /**
@@ -31,14 +33,20 @@ import net.feem.koom.ui.UserInterface;
  * @author cu5
  */
 public class SwingUserInterface implements UserInterface {
-    private final Terminal terminal = new Terminal(this);
+    private final SessionManager manager;
+    private final BindingManager bindings;
+    private boolean terminated;
 
-    private Session session;
+    private final Terminal terminal;
 
     /**
-     * Construct
+     * Construct user interface.
      */
-    public SwingUserInterface() {
+    public SwingUserInterface(SessionManager manager) {
+        this.manager = manager;
+        this.bindings = new BindingManager(manager.getBindings());
+
+        this.terminal = new Terminal(this);
     }
 
     /*
@@ -48,14 +56,31 @@ public class SwingUserInterface implements UserInterface {
      */
     @Override
     public void run() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                terminal.pack();
-                terminal.setVisible(true);
-            }
-        });
+        // TODO: Spawn child threads within this thread group.
+    }
 
-        // TODO: Wait around forever to manage the user interface.
+    public BindingManager createBindingManager(JComponent component) {
+        synchronized (bindings.getRoot()) {
+            return new LeafBindingManager(bindings, component);
+        }
+    }
+
+    /*
+     * (non-Javadoc)
+     * 
+     * @see net.feem.koom.ui.UserInterface#requestTerminate()
+     */
+    @Override
+    public void requestTerminate() {
+        synchronized (this) {
+            if (terminated) {
+                return;
+            }
+
+            terminated = true;
+        }
+
+        manager.releaseInterface(this);
     }
 
     /*
@@ -66,8 +91,6 @@ public class SwingUserInterface implements UserInterface {
     @Override
     public void setSession(Session session) {
         synchronized (this) {
-            this.session = session;
-
             // Notify children of session change.
             terminal.setSession(session);
         }
