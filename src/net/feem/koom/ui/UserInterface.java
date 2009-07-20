@@ -19,11 +19,24 @@
 package net.feem.koom.ui;
 
 import net.feem.koom.Session;
+import net.feem.koom.SessionManager;
 
 /**
  * @author cu5
  * 
  */
 public interface UserInterface extends Runnable {
+    /**
+     * Requests that the user interface terminate. The user interface is
+     * responsible for then calling {@link SessionManager#releaseInterface}.
+     */
+    public void requestTerminate();
+
+    /**
+     * Switches the user interface's current session.
+     * 
+     * @param session
+     *            the new session
+     */
     public void setSession(Session session);
 }

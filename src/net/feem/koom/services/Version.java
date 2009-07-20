@@ -18,6 +18,8 @@
  */
 package net.feem.koom.services;
 
+import javax.swing.ImageIcon;
+
 /**
  * Provides abstract access to Koom version information.
  * 
@@ -26,12 +28,31 @@ package net.feem.koom.services;
 public class Version {
     private static final String version;
     private static final String build;
+    private static final String copyright;
+    private static final String shortLicense;
+    private static final String longLicense;
+    private static final ImageIcon icon;
 
     static {
         Package koom = Package.getPackage("net.feem.koom");
 
         version = wrapString(koom.getSpecificationVersion());
         build = wrapString(koom.getImplementationVersion());
+
+        copyright = String
+                .format(
+                        "Koom %s (build %s)  Copyright 2009 Tim Krajcar <allegro@conmolto.org>",
+                        version, build);
+
+        shortLicense = copyright
+                + "\n"
+                + "This program comes with ABSOLUTELY NO WARRANTY; for details see the about box.\n"
+                + "This is free software, and you are welcome to redistribute it\n"
+                + "under certain conditions; see the about box for details.\n";
+
+        longLicense = wrapString(Resources.getResourceAsText("/COPYING"));
+
+        icon = Resources.getResourceAsIcon("/icons/icon.gif");
     }
 
     private static String wrapString(String raw) {
@@ -44,5 +65,21 @@ public class Version {
 
     public static String getBuild() {
         return build;
+    }
+
+    public static String getCopyright() {
+        return copyright;
+    }
+
+    public static String getShortLicense() {
+        return shortLicense;
+    }
+
+    public static String getLongLicense() {
+        return longLicense;
+    }
+
+    public static ImageIcon getIcon() {
+        return icon;
     }
 }

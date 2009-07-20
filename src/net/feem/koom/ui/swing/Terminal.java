@@ -19,6 +19,8 @@
 package net.feem.koom.ui.swing;
 
 import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
@@ -31,29 +33,45 @@ import javax.swing.JTextField;
 import javax.swing.JTextPane;
 
 import net.feem.koom.Session;
+import net.feem.koom.services.Preferences;
+import net.feem.koom.services.Version;
+import net.feem.koom.ui.BindingManager;
 
 /**
  * A Swing-based terminal emulator window.
  * 
  * @author cu5
  */
+@SuppressWarnings("serial")
 class Terminal extends JFrame {
     private final SwingUserInterface ui;
-
+    private final BindingManager bindings;
     private final JMenuBar menubar;
 
     Terminal(SwingUserInterface ui) {
         this.ui = ui;
 
+        this.bindings = ui.createBindingManager(this.getRootPane());
+
         // Configure frame.
+        setIconImage(Version.getIcon().getImage());
         setTitle("Koom - disconnected");
 
         JTextPane text = new JTextPane();
         text.setEditable(false);
+        text.setFont(Preferences.getMonoFont());
+        text.setText(Version.getShortLicense());
         JScrollPane scroll = new JScrollPane(text);
         add(scroll);
 
         final JTextField entry = new JTextField(80);
+        entry.setFont(Preferences.getMonoFont());
+        entry.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent evt) {
+                entry.setText(null);
+            }
+        });
         add(entry, BorderLayout.SOUTH);
 
         addWindowFocusListener(new WindowAdapter() {
@@ -63,34 +81,44 @@ class Terminal extends JFrame {
         });
 
         // Configure menu bar with basic items.
-        menubar = new JMenuBar();
+        this.menubar = new JMenuBar();
 
         JMenu fileMenu = new JMenu("File");
         fileMenu.setMnemonic((int) 'F');
         fileMenu.add(new JMenuItem("Close", 'C'));
-        fileMenu.addSeparator();
-        fileMenu.add(new JMenuItem("Exit", 'x'));
         menubar.add(fileMenu);
 
         JMenu helpMenu = new JMenu("Help");
         helpMenu.setMnemonic((int) 'H');
-        helpMenu.add(new JMenuItem("About", 'A'));
+        JMenuItem aboutItem = new JMenuItem("About", 'A');
+        final AboutBox aboutBox = new AboutBox(this);
+        aboutItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent evt) {
+                aboutBox.doVisible();
+            }
+        });
+        helpMenu.add(aboutItem);
         menubar.add(helpMenu);
 
         setJMenuBar(menubar);
 
-        // Register handler on window close.
+        // Register handler to terminate this interface on window close.
         addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent evt) {
                 doClose();
             }
         });
+
+        // Realize GUI.
+        pack();
+
+        entry.requestFocusInWindow();
+        setVisible(true);
     }
 
     private void doClose() {
-        // FIXME: This should just terminate the interface. Once we run out of
-        // interfaces, then we can terminate the application.
-        System.exit(0);
+        ui.requestTerminate();
     }
 
     public void setSession(Session session) {

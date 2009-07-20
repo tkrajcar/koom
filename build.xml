@@ -3,7 +3,7 @@
 	<!--
 	  - Configuration.
 	  -->
-	<property name="koom.version" value="0" />
+	<property name="koom.version" value="0.0" />
 
 	<!-- No good way to enter secrets in Ant, so a file is best. -->
 	<property file="keystore.storepass" />
@@ -48,6 +48,11 @@
 				<attribute name="Sealed" value="true" />
 			</manifest>
 
+			<fileset dir=".">
+				<include name="COPYING" />
+			</fileset>
+
+			<fileset dir="res" />
 			<fileset dir="bin" />
 		</jar>
 	</target>

@@ -16,31 +16,29 @@
  * You should have received a copy of the GNU General Public License
  * along with Koom.  If not, see <http://www.gnu.org/licenses/>.
  */
-package net.feem.koom;
+package net.feem.koom.ui;
 
-import net.feem.koom.services.Version;
+import javax.swing.Action;
 
 /**
- * Launcher for the Koom client.
+ * An action factory for actions which are context-independent.
  * 
  * @author cu5
  */
-public class Main {
-    /**
-     * Initial entry point into the Koom client. This method is just responsible
-     * for starting the session manager thread, then returning. The JVM won't
-     * actually terminate until all the non-daemon threads have exited.
+public class StaticActionFactory implements ActionFactory {
+    private final Action action;
+
+    public StaticActionFactory(Action action) {
+        this.action = action;
+    }
+
+    /*
+     * (non-Javadoc)
      * 
-     * @param args
+     * @see net.feem.koom.ui.ActionFactory#createAction(java.lang.Object)
      */
-    public static void main(String[] args) {
-        System.out.format("Starting Koom %s (build %s)...%n", Version
-                .getVersion(), Version.getBuild());
-
-        SessionManager manager = new SessionManager();
-
-        // TODO: Configure manager using command line arguments here.
-
-        new Thread(manager, "SessionManager").start();
+    @Override
+    public Action createAction(Object target) {
+        return action;
     }
 }
