@@ -8,6 +8,12 @@
 	<!-- No good way to enter secrets in Ant, so a file is best. -->
 	<property file="keystore.storepass" />
 
+	<path id="compile.cp">
+		<fileset dir="lib">
+			<include name="compile/*.jar" />
+		</fileset>
+	</path>
+
 	<!--
 	  - General.
 	  -->
@@ -23,7 +29,7 @@
 	  -->
 	<target name="compile" description="Compile Koom client">
 		<mkdir dir="bin" />
-		<javac srcdir="src" destdir="bin" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
+		<javac srcdir="src" destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
 	</target>
 
 	<target name="update-buildnumber" if="compile.updated">

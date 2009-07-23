@@ -18,7 +18,6 @@
  */
 package net.feem.koom.ui.swing;
 
-import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
@@ -28,12 +27,8 @@ import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
-import javax.swing.JScrollPane;
-import javax.swing.JTextField;
-import javax.swing.JTextPane;
 
 import net.feem.koom.Session;
-import net.feem.koom.services.Preferences;
 import net.feem.koom.services.Version;
 import net.feem.koom.ui.BindingManager;
 
@@ -57,26 +52,12 @@ class Terminal extends JFrame {
         setIconImage(Version.getIcon().getImage());
         setTitle("Koom - disconnected");
 
-        JTextPane text = new JTextPane();
-        text.setEditable(false);
-        text.setFont(Preferences.getMonoFont());
-        text.setText(Version.getShortLicense());
-        JScrollPane scroll = new JScrollPane(text);
-        add(scroll);
-
-        final JTextField entry = new JTextField(80);
-        entry.setFont(Preferences.getMonoFont());
-        entry.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent evt) {
-                entry.setText(null);
-            }
-        });
-        add(entry, BorderLayout.SOUTH);
+        final Console console = new Console();
+        add(console);
 
         addWindowFocusListener(new WindowAdapter() {
             public void windowGainedFocus(WindowEvent evt) {
-                entry.requestFocusInWindow();
+                console.doFocus();
             }
         });
 
@@ -113,7 +94,7 @@ class Terminal extends JFrame {
         // Realize GUI.
         pack();
 
-        entry.requestFocusInWindow();
+        console.doFocus();
         setVisible(true);
     }
 
