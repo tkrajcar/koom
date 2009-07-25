@@ -89,8 +89,7 @@ class LeafBindingManager extends BindingManager {
             KeyStroke key = (KeyStroke) trigger.getValue();
             String command = getCommand(trigger);
             target.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
-                    .put(key,
-                    command);
+                    .put(key, command);
         }
 
     }
