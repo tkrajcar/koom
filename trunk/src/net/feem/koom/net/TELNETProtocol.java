@@ -36,7 +36,7 @@ import java.io.OutputStream;
  * This class is a low-level interface designed for performance over safety, and
  * must be used carefully by the caller with respect to synchronization and
  * order of operations. Generally, you shouldn't use this class directly unless
- * you know what you're doing.
+ * you know what you're doing; see {@link NetworkVT} instead.
  * </p>
  * 
  * @author cu5
@@ -92,10 +92,10 @@ public class TELNETProtocol implements Closeable {
     private final SocketConnection socket;
 
     private final InputFilter in;
-    private final TELNETEventHandler inHandler;
+    private TELNETEventHandler inHandler;
 
     private final OutputFilter out;
-    private final OutputEventHandler outHandler;
+    private final OutputEventHandler outHandler = new OutputEventHandler();
 
     static private int getUnsigned(byte signed) {
         return 0xFF & signed;
@@ -112,15 +112,11 @@ public class TELNETProtocol implements Closeable {
      * @throws IOException
      *             on I/O errors
      */
-    public TELNETProtocol(SocketConnection socket, TELNETEventHandler handler)
-            throws IOException {
+    public TELNETProtocol(SocketConnection socket) throws IOException {
         this.socket = socket;
 
         in = new InputFilter(socket.getReceiveBuffer());
-        this.inHandler = handler;
-
         out = new OutputFilter(socket.getSendBuffer());
-        this.outHandler = new OutputEventHandler();
     }
 
     /**
@@ -136,6 +132,29 @@ public class TELNETProtocol implements Closeable {
     }
 
     /**
+     * Sets the handler for reading input events.
+     * 
+     * <p>
+     * An input event handler must be set before any input operations.
+     * </p>
+     * 
+     * @param handler
+     *            input event handler
+     */
+    public void setInputHandler(TELNETEventHandler handler) {
+        inHandler = handler;
+    }
+
+    /**
+     * Gets the handler for writing output events.
+     * 
+     * @return output event handler
+     */
+    public TELNETEventHandler getOutputEventHandler() {
+        return outHandler;
+    }
+
+    /**
      * Clears input state change indicator after a {@link StreamStateException},
      * allowing input processing to continue.
      */
@@ -144,12 +163,12 @@ public class TELNETProtocol implements Closeable {
     }
 
     public void shutdownOutput() throws IOException {
-        out.flush();
+        out.emptyBuffer();
         socket.shutdownOutput();
     }
 
     public void flush() throws IOException {
-        out.flush();
+        out.emptyBuffer();
         socket.flush();
     }
 
@@ -159,10 +178,6 @@ public class TELNETProtocol implements Closeable {
 
     public OutputStream getOutputStream() {
         return out;
-    }
-
-    public TELNETEventHandler getOutputEventHandler() {
-        return outHandler;
     }
 
     //
@@ -190,6 +205,8 @@ public class TELNETProtocol implements Closeable {
 
         @Override
         public int read() throws IOException {
+            checkState();
+
             do {
                 final int next = nextData();
                 if (next != NEED_DATA) {
@@ -202,6 +219,8 @@ public class TELNETProtocol implements Closeable {
 
         @Override
         public int read(byte[] buf, int off, int len) throws IOException {
+            checkState();
+
             int ii = 0;
 
             try {
@@ -241,6 +260,8 @@ public class TELNETProtocol implements Closeable {
 
         @Override
         public long skip(long count) throws IOException {
+            checkState();
+
             // We still need to process every single byte, but we don't need to
             // save it anywhere. Since the caller has expressed no interest in
             // the skipped content, we also block to satisfy the request unless
@@ -284,12 +305,14 @@ public class TELNETProtocol implements Closeable {
             return true;
         }
 
-        private int nextData() throws IOException {
+        private void checkState() throws StreamStateException {
             if (changed != null) {
                 // Re-throw exception until reset.
                 throw changed;
             }
+        }
 
+        private int nextData() throws IOException {
             try {
                 return nextDataUnwrapped();
             } catch (StreamStateException ex) {
@@ -441,8 +464,7 @@ public class TELNETProtocol implements Closeable {
         public void flush() throws IOException {
             // This doesn't flush all the way to the socket, just empties the
             // write buffer.
-            socket.write(wlen);
-            wlen = 0;
+            emptyBuffer();
         }
 
         @Override
@@ -459,7 +481,7 @@ public class TELNETProtocol implements Closeable {
 
         private void reserve(int len) throws IOException {
             if (wlen + len > wbuf.length) {
-                flush();
+                emptyBuffer();
             }
         }
 
@@ -474,10 +496,15 @@ public class TELNETProtocol implements Closeable {
                 reserve(2);
                 wbuf[wlen++] = CODE_IAC;
             } else if (wlen == wbuf.length) {
-                flush();
+                emptyBuffer();
             }
 
             wbuf[wlen++] = nextByte;
+        }
+
+        private void emptyBuffer() throws IOException {
+            socket.write(wlen);
+            wlen = 0;
         }
     }
 
@@ -486,7 +513,8 @@ public class TELNETProtocol implements Closeable {
     //
     private final class OutputEventHandler implements TELNETEventHandler {
         @Override
-        public void processCommand(byte code) {
+        public void processCommand(byte code) throws IOException {
+            writeCommand(code);
         }
 
         @Override
@@ -510,21 +538,29 @@ public class TELNETProtocol implements Closeable {
         }
 
         @Override
-        public void beginParam(int option) {
+        public void beginParam(int option) throws IOException {
+            writeOption(CODE_SB, option);
         }
 
         @Override
-        public void endParam() throws StreamStateException {
+        public void endParam() throws IOException {
+            writeCommand(CODE_SE);
         }
 
         @Override
-        public void appendParam(byte nextByte) {
+        public void appendParam(byte nextByte) throws IOException {
+            out.nextData(nextByte);
+        }
+
+        private void writeCommand(byte code) throws IOException {
+            out.reserve(2);
+            out.wbuf[out.wlen++] = CODE_IAC;
+            out.wbuf[out.wlen++] = code;
         }
 
         private void writeOption(byte code, int option) throws IOException {
             assert option >= 0 && option < 256;
 
-            System.err.format("OPTION %d=%d%n", getUnsigned(code), option);
             out.reserve(3);
             out.wbuf[out.wlen++] = CODE_IAC;
             out.wbuf[out.wlen++] = code;
