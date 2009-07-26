@@ -107,18 +107,44 @@ public class SocketConnection implements Closeable {
         out.flush();
     }
 
+    /**
+     * @return receive buffer of at least 256 bytes
+     */
     public byte[] getReceiveBuffer() {
         return rbuf;
     }
 
+    /**
+     * @return send buffer of at least 256 bytes
+     */
     public byte[] getSendBuffer() {
         return wbuf;
     }
 
+    /**
+     * Reads in bytes to fill the receive buffer. The existing buffer contents
+     * are discarded. Blocks until at least one byte has been read, the end of
+     * stream is reached, or an exception is thrown.
+     * 
+     * @return number of bytes read, or -1 if end of stream
+     * 
+     * @throws IOException
+     *             if there was an I/O error
+     */
     public int read() throws IOException {
         return in.read(rbuf);
     }
 
+    /**
+     * Writes out the given number of bytes from the send buffer. Will block
+     * until all bytes are written, or an exception is thrown.
+     * 
+     * @param len
+     *            number of bytes to write
+     * 
+     * @throws IOException
+     *             if there was an I/O error
+     */
     public void write(int len) throws IOException {
         out.write(wbuf, 0, len);
     }
