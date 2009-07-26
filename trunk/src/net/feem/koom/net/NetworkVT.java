@@ -25,6 +25,8 @@ import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 
+import net.feem.koom.services.Utility;
+
 /**
  * A high level interface to the TELNET protocol. You should generally interface
  * with this class, in preference to using {@link TELNETProtocol} directly.
@@ -32,29 +34,28 @@ import java.io.Writer;
  * @author cu5
  */
 public class NetworkVT {
+    private static final byte[] TERMINAL_TYPE = Utility.getASCII("KOOM");
+
     private static enum InputState {
         // Waiting for input.
         START,
 
         // End of input.
-        STOP, STOP_UNTERMINATED,
-
-        // Waiting for reset.
-        RESET
+        STOP, STOP_UNTERMINATED, STOP_EOF;
     }
 
     private final TELNETProtocol proto;
 
     private final Reader reader;
-    private final StringBuilder input = new StringBuilder(16384);
     private InputState inputState = InputState.START;
-    private boolean sawEOF;
     private boolean sawCR;
+    private int savedChar = -1;
 
     private final Writer writer;
     private final TELNETEventHandler outputHandler;
 
     private boolean sawGA;
+    private final TTYPEOption optionTTYPE = new TTYPEOption();
     private final NAWSOption optionNAWS = new NAWSOption();
 
     public NetworkVT(TELNETProtocol proto) throws IOException {
@@ -69,10 +70,7 @@ public class NetworkVT {
             throw new AssertionError(ex);
         }
 
-        // Suggest initial options.
         outputHandler = proto.getOutputEventHandler();
-
-        optionNAWS.tryEnable();
     }
 
     public void setWindowSize(int rows, int columns) throws IOException {
@@ -80,175 +78,214 @@ public class NetworkVT {
     }
 
     /**
-     * Returns the next line, or <code>null</code> if the next "line" is
-     * unterminated. An incomplete line can be retrieved with the
-     * {@link readForced} method.
+     * Reads characters from the remote end. In addition to the usual reasons, a
+     * read may end early because a record terminator was encountered. (This
+     * implies a zero length record is possible.)
      * 
      * <p>
-     * The returned line does not contain the line terminator.
+     * Besides the usual end of line, a record may be terminated by an explicit
+     * marker, the end of stream, a style boundary, and possibly others. Check
+     * the terminal state after the read to disambiguate the various cases.
      * </p>
      * 
      * <p>
-     * Note that the returned value is a {@link CharSequence} with possible
-     * limited lifetime; it is likely change on the next call to any
-     * <code>read*</code> method.
+     * In particular, {@link readIsRecord()} will indicate if the returned data
+     * terminates a record (including lines), and {@link readIsLine()} will
+     * indicate if the returned data terminates a line.
      * </p>
      * 
-     * @return a complete line, or <code>null</code> if unterminated
+     * @param cbuf
+     *            character array
+     * @param off
+     *            offset into character array
+     * @param len
+     *            number of characters to write
+     * 
+     * @return the number of characters read, or -1 if end of stream
      * 
      * @throws IOException
      *             if there was an underlying I/O error
      */
-    public CharSequence readLine() throws IOException {
-        nextLine();
-        if (inputState == InputState.STOP) {
-            inputState = InputState.RESET;
-            return input;
-        } else {
-            return null;
+    public int read(char[] cbuf, int off, int len) throws IOException {
+        int ii = 0;
+
+        inputState = InputState.START;
+
+        // Clean up any unfinished business.
+        if (savedChar != -1) {
+            if (len > 0) {
+                cbuf[off++] = (char) savedChar;
+                ii = 1;
+                savedChar = -1;
+            } else {
+                return 0;
+            }
+        }
+
+        // Read characters up until the next boundary.
+        try {
+            LOOP: while (ii < len) {
+                if (!reader.ready() && ii != 0) {
+                    break LOOP;
+                }
+
+                final int nextChar = reader.read();
+                if (nextChar == -1) {
+                    // End of stream.
+                    if (ii == 0) {
+                        return -1;
+                    }
+
+                    inputState = InputState.STOP_EOF;
+                    break LOOP;
+                }
+
+                switch (nextChar) {
+                case '\0':
+                    if (sawCR) {
+                        sawCR = false;
+                        cbuf[off++] = '\r';
+                        ii++;
+                    } else {
+                        cbuf[off++] = '\0';
+                        ii++;
+                    }
+                    break;
+
+                case '\r':
+                    if (sawCR) {
+                        // Not in compliance with RFC, but we'll be generous.
+                        cbuf[off++] = '\r';
+                        ii++;
+                    } else {
+                        sawCR = true;
+                    }
+                    break;
+
+                case '\n':
+                    // Not in compliance with RFC, but a fairly common mistake.
+                    // Our behavior is more useful to a MU* client.
+                    sawCR = false;
+                    inputState = InputState.STOP;
+                    break LOOP;
+
+                default:
+                    if (sawCR) {
+                        // Not in compliance with RFC, but we'll be generous.
+                        sawCR = false;
+                        cbuf[off++] = '\r';
+                        ii++;
+
+                        if (ii == len) {
+                            savedChar = nextChar;
+                            break LOOP;
+                        }
+                    }
+
+                    cbuf[off++] = (char) nextChar;
+                    ii++;
+                    break;
+                }
+            }
+        } catch (StreamStateException ex) {
+            if (sawGA) {
+                // Go Ahead.
+                proto.clear();
+                sawGA = false;
+            } else {
+                // Not supposed to happen.
+                throw new AssertionError("Unexpected state change");
+            }
+
+            inputState = InputState.STOP_UNTERMINATED;
+        } catch (IOException ex) {
+            // I/O error.
+            if (ii == 0) {
+                throw ex;
+            }
+        }
+
+        // Finish read.
+        return ii;
+    }
+
+    /**
+     * Tests if the most recent read ended with a record terminator of any type.
+     * 
+     * @return if the record ended with any kind of terminator
+     */
+    public boolean readIsRecord() {
+        switch (inputState) {
+        case STOP:
+        case STOP_UNTERMINATED:
+        case STOP_EOF:
+            return true;
+
+        default:
+            return false;
         }
     }
 
     /**
-     * Returns the next record, regardless if it's terminated or not.
+     * Tests if the most recent read ended with a line terminator.
      * 
-     * <p>
-     * The returned line does not contain any line terminator.
-     * </p>
-     * 
-     * <p>
-     * Note that the returned value is a {@link CharSequence} with possible
-     * limited lifetime; it is likely change on the next call to any
-     * <code>read*</code> method.
-     * </p>
-     * 
-     * @return the next record, regardless of termination
-     * 
-     * @throws IOException
-     *             if there was an underlying I/O error
+     * @return if the record ended with a line terminator
      */
-    public CharSequence readForced() throws IOException {
-        if (sawEOF && input.length() == 0) {
-            return null;
-        }
+    public boolean readIsLine() {
+        switch (inputState) {
+        case STOP:
+            return true;
 
-        nextLine();
-        inputState = InputState.RESET;
-        return input;
+        default:
+            return false;
+        }
     }
 
     /**
-     * Writes a complete line.
+     * Writes characters to the remote end, adding line termination.
      * 
-     * @param line
-     *            line character sequence (without termination)
+     * @param cbuf
+     *            character array
+     * @param off
+     *            offset into character array
+     * @param len
+     *            number of characters to write
      * 
      * @throws IOException
      *             if there was an underlying I/O error
      */
-    public void writeLine(CharSequence line) throws IOException {
+    public void writeLine(char[] cbuf, int off, int len) throws IOException {
         synchronized (proto) {
-            for (int ii = 0; ii < line.length(); ii++) {
-                final char nextChar = line.charAt(ii);
-                writer.append(nextChar);
+            for (int ii = 0; ii < len; ii++) {
+                final char nextChar = cbuf[off++];
+                writer.write(nextChar);
 
                 if (nextChar == '\r') {
                     // Bare CR.
-                    writer.append('\0');
+                    writer.write('\0');
                 }
             }
 
-            writer.append("\r\n");
+            writer.write("\r\n");
+        }
+    }
+
+    /**
+     * Flushes any buffered data to the remote end.
+     * 
+     * @throws IOException
+     *             if there was an underlying I/O error
+     */
+    public void flush() throws IOException {
+        synchronized (proto) {
             writer.flush();
             proto.flush();
         }
     }
 
-    //
-    // Gets the next line from the remote end.
-    //
-    private void nextLine() throws IOException {
-        // Figure out what to do.
-        switch (inputState) {
-        case STOP:
-        case STOP_UNTERMINATED:
-            // Already have line.
-            return;
-
-        case RESET:
-            // Start on next line.
-            if (sawEOF) {
-                return;
-            }
-
-            input.setLength(0);
-            inputState = InputState.START;
-            break;
-
-        default:
-            // Continue reading characters.
-            break;
-        }
-
-        // Read characters.
-        try {
-            int nextChar;
-            while ((nextChar = reader.read()) != -1) {
-                if (sawCR) {
-                    sawCR = false;
-                    switch (nextChar) {
-                    case '\0':
-                        // Bare CR.
-                        input.append('\r');
-                        continue;
-
-                    case '\n':
-                        // Line terminated.
-                        inputState = InputState.STOP;
-                        return;
-
-                    default:
-                        // Not in compliance with RFC, but we'll be generous.
-                        input.append('\r');
-                        break;
-                    }
-                }
-
-                switch (nextChar) {
-                case '\r':
-                    sawCR = true;
-                    break;
-
-                case '\n':
-                    // Not in compliance with RFC, but a fairly common mistake.
-                    // This behavior is more useful to a MU* client.
-                    inputState = InputState.STOP;
-                    return;
-
-                default:
-                    input.append((char) nextChar);
-                    break;
-                }
-            }
-
-            // End of stream. Record ends now.
-            sawEOF = true;
-        } catch (StreamStateException ex) {
-            if (sawGA) {
-                // Go Ahead. Record ends now.
-                sawGA = false;
-                proto.clear();
-            } else {
-                // Shouldn't happen.
-                throw new AssertionError(ex);
-            }
-        }
-
-        // Forced termination.
-        inputState = InputState.STOP_UNTERMINATED;
-    }
-
     private final class InputEventHandler implements TELNETEventHandler {
+        private TELNETOption subOption;
+
         @Override
         public void processCommand(byte code) throws IOException {
             if (code == TELNETProtocol.CODE_GA) {
@@ -260,9 +297,16 @@ public class NetworkVT {
         @Override
         public void processDO(int option) throws IOException {
             synchronized (proto) {
-                if (option == optionNAWS.getOption()) {
+                switch (option) {
+                case TTYPEOption.OPTION_CODE:
+                    optionTTYPE.enable();
+                    break;
+
+                case NAWSOption.OPTION_CODE:
                     optionNAWS.enable();
-                } else {
+                    break;
+
+                default:
                     // Unsupported option.
                     outputHandler.processWONT(option);
                     proto.flush();
@@ -273,10 +317,18 @@ public class NetworkVT {
         @Override
         public void processDONT(int option) throws IOException {
             synchronized (proto) {
-                if (option == optionNAWS.getOption()) {
+                switch (option) {
+                case TTYPEOption.OPTION_CODE:
+                    optionTTYPE.disable();
+                    break;
+
+                case NAWSOption.OPTION_CODE:
                     optionNAWS.disable();
-                } else {
+                    break;
+
+                default:
                     // Already WONTing unsupported local option.
+                    break;
                 }
             }
         }
@@ -296,18 +348,101 @@ public class NetworkVT {
         }
 
         @Override
-        public void beginParam(int option) throws IOException {
-            // Ignoring for now.
+        public void beginParam(int option) {
+            switch (option) {
+            case TTYPEOption.OPTION_CODE:
+                subOption = optionTTYPE;
+                break;
+
+            default:
+                // Unsupported option.
+                subOption = null;
+                return;
+            }
+
+            subOption.beginParam();
         }
 
         @Override
         public void endParam() throws IOException {
-            // Ignoring for now.
+            if (subOption == null) {
+                // Unsupported option.
+            } else {
+                subOption.endParam();
+            }
         }
 
         @Override
-        public void appendParam(byte nextByte) throws IOException {
-            // Ignoring for now.
+        public void appendParam(byte nextByte) {
+            if (subOption == null) {
+                // Unsupported option.
+            } else {
+                subOption.appendParam(nextByte);
+            }
+        }
+    }
+
+    /**
+     * Terminal Type option (RFC 1091).
+     */
+    private final class TTYPEOption extends TELNETOption {
+        private static final int OPTION_CODE = 24;
+
+        private static final byte SUB_IS = (byte) 0;
+        private static final byte SUB_SEND = (byte) 1;
+
+        private int paramCount;
+
+        private TTYPEOption() {
+            super(OPTION_CODE);
+        }
+
+        @Override
+        public void beginParam() {
+            paramCount = 1;
+        }
+
+        @Override
+        public void endParam() throws IOException {
+            if (paramCount == 2) {
+                // Send TTYPE.
+                paramCount = 0;
+
+                synchronized (proto) {
+                    outputHandler.beginParam(OPTION_CODE);
+                    outputHandler.appendParam(SUB_IS);
+
+                    for (byte nextByte : TERMINAL_TYPE) {
+                        outputHandler.appendParam(nextByte);
+                    }
+
+                    outputHandler.endParam();
+                    proto.flush();
+                }
+            }
+        }
+
+        @Override
+        public void appendParam(byte nextByte) {
+            if (paramCount == 1 && nextByte == SUB_SEND) {
+                // Request for TTYPE from server.
+                paramCount = 2;
+            } else {
+                // Parameter parsing failed.
+                paramCount = -1;
+            }
+        }
+
+        @Override
+        protected void requestEnable() throws IOException {
+            outputHandler.processWILL(OPTION_CODE);
+            proto.flush();
+        }
+
+        @Override
+        protected void requestDisable() throws IOException {
+            outputHandler.processWONT(OPTION_CODE);
+            proto.flush();
         }
     }
 
@@ -315,12 +450,14 @@ public class NetworkVT {
      * Negotiate About Window Size option (RFC 1073).
      */
     private final class NAWSOption extends TELNETOption {
+        private static final int OPTION_CODE = 31;
+
         // Unknown window size; call setWindowSize() to initialize.
         private int rows = 0;
         private int cols = 0;
 
         private NAWSOption() {
-            super(31);
+            super(OPTION_CODE);
         }
 
         public void setWindowSize(int rows, int cols) throws IOException {
@@ -334,7 +471,9 @@ public class NetworkVT {
             }
 
             if (isEnabled()) {
-                sendWindowSize(rows, cols);
+                synchronized (proto) {
+                    sendWindowSize(rows, cols);
+                }
             }
 
             this.rows = rows;
@@ -343,13 +482,13 @@ public class NetworkVT {
 
         @Override
         protected void requestEnable() throws IOException {
-            outputHandler.processWILL(getOption());
+            outputHandler.processWILL(OPTION_CODE);
             proto.flush();
         }
 
         @Override
         protected void requestDisable() throws IOException {
-            outputHandler.processWONT(getOption());
+            outputHandler.processWONT(OPTION_CODE);
             proto.flush();
         }
 

@@ -105,19 +105,32 @@ public class DebugClient {
     }
 
     private static void readThread() {
+        StringBuilder line = new StringBuilder(16384);
+        char[] cbuf = new char[32];
+
         try {
             while (true) {
-                CharSequence line = terminal.readLine();
-                if (line == null) {
-                    line = terminal.readForced();
-                    if (line == null) {
-                        // End of stream.
-                        break;
+                final int count = terminal.read(cbuf, 0, cbuf.length);
+                if (count == -1) {
+                    // End of stream.
+                    break;
+                }
+
+                for (int ii = 0; ii < count; ii++) {
+                    System.out.print(cbuf[ii]);
+                }
+
+                line.append(cbuf, 0, count);
+
+                if (terminal.readIsRecord()) {
+                    if (terminal.readIsLine()) {
+                        System.out.println();
+                        // System.out.format("[LINE:%s]%n", line);
+                    } else {
+                        System.out.format("[PROMPT:%s]%n", line);
                     }
 
-                    System.out.format("PROMPT[" + line + "]");
-                } else {
-                    System.out.println(line);
+                    line.setLength(0);
                 }
             }
         } catch (IOException ex) {
@@ -158,7 +171,8 @@ public class DebugClient {
                         break LOOP;
                     }
 
-                    terminal.writeLine(line);
+                    terminal.writeLine(line.toCharArray(), 0, line.length());
+                    terminal.flush();
                 }
 
                 working.clear();
