@@ -48,6 +48,7 @@ public class NetworkVT {
     private final Reader reader;
     private final StringBuilder input = new StringBuilder(16384);
     private InputState inputState = InputState.START;
+    private boolean sawEOF;
     private boolean sawCR;
 
     private final Writer writer;
@@ -99,7 +100,8 @@ public class NetworkVT {
      *             if there was an underlying I/O error
      */
     public CharSequence readLine() throws IOException {
-        if (nextLine()) {
+        nextLine();
+        if (inputState == InputState.STOP) {
             inputState = InputState.RESET;
             return input;
         } else {
@@ -126,6 +128,10 @@ public class NetworkVT {
      *             if there was an underlying I/O error
      */
     public CharSequence readForced() throws IOException {
+        if (sawEOF && input.length() == 0) {
+            return null;
+        }
+
         nextLine();
         inputState = InputState.RESET;
         return input;
@@ -161,16 +167,20 @@ public class NetworkVT {
     //
     // Gets the next line from the remote end.
     //
-    private boolean nextLine() throws IOException {
+    private void nextLine() throws IOException {
         // Figure out what to do.
         switch (inputState) {
         case STOP:
         case STOP_UNTERMINATED:
             // Already have line.
-            return true;
+            return;
 
         case RESET:
             // Start on next line.
+            if (sawEOF) {
+                return;
+            }
+
             input.setLength(0);
             inputState = InputState.START;
             break;
@@ -182,13 +192,8 @@ public class NetworkVT {
 
         // Read characters.
         try {
-            while (true) {
-                final int nextChar = reader.read();
-                if (nextChar == -1) {
-                    // End of stream. Record ends now.
-                    break;
-                }
-
+            int nextChar;
+            while ((nextChar = reader.read()) != -1) {
                 if (sawCR) {
                     sawCR = false;
                     switch (nextChar) {
@@ -200,7 +205,7 @@ public class NetworkVT {
                     case '\n':
                         // Line terminated.
                         inputState = InputState.STOP;
-                        return true;
+                        return;
 
                     default:
                         // Not in compliance with RFC, but we'll be generous.
@@ -216,14 +221,18 @@ public class NetworkVT {
 
                 case '\n':
                     // Not in compliance with RFC, but a fairly common mistake.
+                    // This behavior is more useful to a MU* client.
                     inputState = InputState.STOP;
-                    return true;
+                    return;
 
                 default:
                     input.append((char) nextChar);
                     break;
                 }
             }
+
+            // End of stream. Record ends now.
+            sawEOF = true;
         } catch (StreamStateException ex) {
             if (sawGA) {
                 // Go Ahead. Record ends now.
@@ -235,9 +244,8 @@ public class NetworkVT {
             }
         }
 
-        // Record unterminated.
+        // Forced termination.
         inputState = InputState.STOP_UNTERMINATED;
-        return false;
     }
 
     private final class InputEventHandler implements TELNETEventHandler {
@@ -318,6 +326,11 @@ public class NetworkVT {
         public void setWindowSize(int rows, int cols) throws IOException {
             if (rows < 1 || rows > 65535 || cols < 1 || cols > 65535) {
                 throw new IllegalArgumentException("Invalid window size");
+            }
+
+            if (rows == this.rows && cols == this.cols) {
+                // No change.
+                return;
             }
 
             if (isEnabled()) {
