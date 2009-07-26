@@ -20,6 +20,7 @@ package net.feem.koom.services;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 
 /**
  * @author cu5
@@ -41,6 +42,42 @@ public class Utility {
             closeable.close();
         } catch (IOException ex) {
             // Don't care.
+        }
+    }
+
+    /**
+     * Encodes a string as an array of ASCII bytes. Mostly used to pre-encode
+     * constants.
+     * 
+     * @param string
+     *            Java string
+     * 
+     * @return US-ASCII byte array
+     */
+    public static byte[] getASCII(String string) {
+        try {
+            return string.getBytes("US-ASCII");
+        } catch (UnsupportedEncodingException ex) {
+            // All JVMs should support US-ASCII.
+            throw new AssertionError(ex);
+        }
+    }
+
+    /**
+     * Encodes a string as an array of UTF-8 bytes. Mostly used to pre-encode
+     * constants.
+     * 
+     * @param string
+     *            Java string
+     * 
+     * @return UTF-8 byte array
+     */
+    public static byte[] getUTF8(String string) {
+        try {
+            return string.getBytes("UTF-8");
+        } catch (UnsupportedEncodingException ex) {
+            // All JVMs should support UTF-8.
+            throw new AssertionError(ex);
         }
     }
 }
