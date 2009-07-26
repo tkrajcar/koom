@@ -23,13 +23,18 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author cu5
  */
 public class DebugClient {
+    private static TELNETProtocol connection;
     private static NetworkVT terminal;
-    private static volatile boolean terminating;
+
+    private static final List<String> output = new ArrayList<String>();
+    private static final List<String> working = new ArrayList<String>();
 
     public static void main(String[] args) throws Exception {
         // Create terminal.
@@ -39,7 +44,6 @@ public class DebugClient {
         InetSocketAddress socketAddress = new InetSocketAddress(address, port);
         SocketConnection socket = new SocketConnection(socketAddress, null);
 
-        TELNETProtocol connection = null;
         try {
             connection = new TELNETProtocol(socket);
         } finally {
@@ -59,48 +63,59 @@ public class DebugClient {
         // Display input from connection.
         terminal.setWindowSize(24, 80);
 
+        Thread input = new Thread(new Runnable() {
+            public void run() {
+                inputThread();
+            }
+        });
+        input.setDaemon(true);
+        input.start();
+
         new Thread(new Runnable() {
             public void run() {
                 readThread();
             }
         }).start();
 
-        // Feed input to connection.
+        new Thread(new Runnable() {
+            public void run() {
+                writeThread();
+            }
+        }).start();
+    }
+
+    private static void inputThread() {
         BufferedReader reader = new BufferedReader(new InputStreamReader(
                 System.in));
-        int count = 0;
         try {
-            while (!terminating) {
-                // FIXME: Can block here.
-                final String line = reader.readLine();
-                if (line == null) {
-                    break;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                synchronized (output) {
+                    output.add(line);
+                    output.notify();
                 }
-
-                if (count == 0) {
-                    count = 1;
-                    terminal.setWindowSize(25, 80);
-                }
-
-                // FIXME: Can block here.
-                terminal.writeLine(line);
             }
-
-            connection.shutdownOutput();
+        } catch (IOException ex) {
+            // Can't input anymore.
+            ex.printStackTrace();
         } finally {
-            terminating = true;
-            connection.close();
+            System.err.println("INPUT TERMINATING");
+            terminate();
         }
-
-        System.exit(0);
     }
 
     private static void readThread() {
         try {
-            while (!terminating) {
-                final CharSequence line = terminal.readLine();
+            while (true) {
+                CharSequence line = terminal.readLine();
                 if (line == null) {
-                    System.out.format("PROMPT[" + terminal.readForced() + "]");
+                    line = terminal.readForced();
+                    if (line == null) {
+                        // End of stream.
+                        break;
+                    }
+
+                    System.out.format("PROMPT[" + line + "]");
                 } else {
                     System.out.println(line);
                 }
@@ -110,7 +125,59 @@ public class DebugClient {
             ex.printStackTrace();
         } finally {
             System.err.println("READER TERMINATING");
-            terminating = true;
+            terminate();
+        }
+    }
+
+    private static void writeThread() {
+        boolean changed = true;
+
+        try {
+            LOOP: while (true) {
+                synchronized (output) {
+                    while (output.isEmpty()) {
+                        try {
+                            output.wait();
+                        } catch (InterruptedException ex) {
+                            // Don't care.
+                        }
+                    }
+
+                    working.addAll(output);
+                    output.clear();
+                }
+
+                if (changed) {
+                    System.err.println("CHANGING WINDOW SIZE");
+                    terminal.setWindowSize(25, 80);
+                    changed = false;
+                }
+
+                for (String line : working) {
+                    if (line == null) {
+                        break LOOP;
+                    }
+
+                    terminal.writeLine(line);
+                }
+
+                working.clear();
+            }
+
+            connection.shutdownOutput();
+        } catch (IOException ex) {
+            // Can't write anymore.
+            ex.printStackTrace();
+        } finally {
+            System.err.println("WRITER TERMINATING");
+            terminate();
+        }
+    }
+
+    private static void terminate() {
+        synchronized (output) {
+            output.add(null);
+            output.notify();
         }
     }
 }
