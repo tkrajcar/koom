@@ -21,16 +21,16 @@ package net.feem.koom.net;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Reader;
-import java.io.Writer;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 
 /**
  * Implementation of the TELNET protocol from Internet STD 8.
+ * 
+ * <p>
+ * Since transforming CRs and end of lines in this class would result in a loss
+ * of information about line termination, the user is responsible for
+ * transforming to and from the standard CR NUL and CR LF sequences.
+ * </p>
  * 
  * <p>
  * This class is a low-level interface designed for performance over safety, and
@@ -42,47 +42,42 @@ import java.net.InetSocketAddress;
  * @author cu5
  */
 public class TELNETProtocol implements Closeable {
-    // Special byte constants.
-    private static final byte CODE_NUL = (byte) 0;
-    private static final byte CODE_LF = (byte) 10;
-    private static final byte CODE_CR = (byte) 13;
+    //
+    // TELNET command codes from Internet STD 8.
+    //
+    public static final byte CODE_SE = (byte) 240;
 
-    private static final byte CODE_SUB_SE = (byte) 240;
+    public static final byte CODE_NOP = (byte) 241;
+    public static final byte CODE_DataMark = (byte) 242;
+    public static final byte CODE_BRK = (byte) 243;
+    public static final byte CODE_FUN_IP = (byte) 244;
+    public static final byte CODE_FUN_AO = (byte) 245;
+    public static final byte CODE_FUN_AYT = (byte) 246;
+    public static final byte CODE_FUN_EC = (byte) 247;
+    public static final byte CODE_FUN_EL = (byte) 248;
+    public static final byte CODE_GA = (byte) 249;
 
-    private static final byte CODE_NOP = (byte) 241;
-    private static final byte CODE_DataMark = (byte) 242;
-    private static final byte CODE_BRK = (byte) 243;
-    private static final byte CODE_FUN_IP = (byte) 244;
-    private static final byte CODE_FUN_AO = (byte) 245;
-    private static final byte CODE_FUN_AYT = (byte) 246;
-    private static final byte CODE_FUN_EC = (byte) 247;
-    private static final byte CODE_FUN_EL = (byte) 248;
-    private static final byte CODE_GA = (byte) 249;
+    public static final byte CODE_WILL = (byte) 251;
+    public static final byte CODE_WONT = (byte) 252;
+    public static final byte CODE_DO = (byte) 253;
+    public static final byte CODE_DONT = (byte) 254;
 
-    private static final byte CODE_SUB_SB = (byte) 250;
+    public static final byte CODE_SB = (byte) 250;
 
-    private static final byte CODE_OPT_WILL = (byte) 251;
-    private static final byte CODE_OPT_WONT = (byte) 252;
-    private static final byte CODE_OPT_DO = (byte) 253;
-    private static final byte CODE_OPT_DONT = (byte) 254;
-
-    private static final byte CODE_IAC = (byte) 255;
+    public static final byte CODE_IAC = (byte) 255;
 
     /**
-     * TELNET byte stream state.
+     * TELNET command state.
      */
-    private static enum StreamState {
+    private static enum CommandState {
         // In initial state, expect data or IAC.
         START,
-
-        // Saw CR, expect NUL or LF.
-        CR,
 
         // Saw IAC, expect command.
         IAC,
 
         // Saw option negotiation command, expect option code.
-        OPTION,
+        OPTION_WILL, OPTION_WONT, OPTION_DO, OPTION_DONT,
 
         // Saw option sub-negotiation begin command, expect option code.
         NEGOTIATION_BEGIN,
@@ -96,31 +91,36 @@ public class TELNETProtocol implements Closeable {
 
     private final SocketConnection socket;
 
-    private final byte[] rbuf;
-    private int roff, rlen;
+    private final InputFilter in;
+    private final TELNETEventHandler inHandler;
 
-    private final byte[] wbuf;
-    private int wlen;
+    private final OutputFilter out;
+    private final OutputEventHandler outHandler;
 
-    private final Reader reader;
-    private final Writer writer;
+    static private int getUnsigned(byte signed) {
+        return 0xFF & signed;
+    }
 
     /**
-     * @param address
-     *            remote address
-     * @param proxy
-     *            TODO: replace this with a generic configuration object
+     * Constructs a TELNET protocol handler.
+     * 
+     * @param socket
+     *            remote connection
+     * @param handler
+     *            TELNET stream event handler
      * 
      * @throws IOException
+     *             on I/O errors
      */
-    public TELNETProtocol(SocketConnection socket) throws IOException {
+    public TELNETProtocol(SocketConnection socket, TELNETEventHandler handler)
+            throws IOException {
         this.socket = socket;
 
-        rbuf = socket.getReceiveBuffer();
-        reader = new InputStreamReader(new InputFilter(), "UTF-8");
+        in = new InputFilter(socket.getReceiveBuffer());
+        this.inHandler = handler;
 
-        wbuf = socket.getSendBuffer();
-        writer = new OutputStreamWriter(new OutputFilter(), "UTF-8");
+        out = new OutputFilter(socket.getSendBuffer());
+        this.outHandler = new OutputEventHandler();
     }
 
     /**
@@ -135,38 +135,65 @@ public class TELNETProtocol implements Closeable {
         socket.close();
     }
 
-    public void shutdownOutput() throws IOException {
-        socket.write(wlen);
-        wlen = 0;
+    /**
+     * Clears input state change indicator after a {@link StreamStateException},
+     * allowing input processing to continue.
+     */
+    public void clear() {
+        in.changed = null;
+    }
 
+    public void shutdownOutput() throws IOException {
+        out.flush();
         socket.shutdownOutput();
     }
 
     public void flush() throws IOException {
-        socket.write(wlen);
-        wlen = 0;
-
+        out.flush();
         socket.flush();
     }
 
-    public Reader getReader() {
-        return reader;
+    public InputStream getInputStream() {
+        return in;
     }
 
-    public Writer getWriter() {
-        return writer;
+    public OutputStream getOutputStream() {
+        return out;
     }
 
+    public TELNETEventHandler getOutputEventHandler() {
+        return outHandler;
+    }
+
+    //
+    // Translate TELNET input stream to raw data bytes.
+    //
     private final class InputFilter extends InputStream {
-        private StreamState state = StreamState.START;
-        private byte savedByte;
+        private static final int NEED_DATA = 128;
+
+        private final byte[] rbuf;
+        private int roff, rlen;
+
+        private CommandState state = CommandState.START;
+        private StreamStateException changed;
+
+        private InputFilter(byte[] rbuf) {
+            this.rbuf = rbuf;
+        }
+
+        @Override
+        public int available() {
+            // Because we might consume an arbitrary number of bytes, it's
+            // non-trivial to determine this, so there isn't much point.
+            return 0;
+        }
 
         @Override
         public int read() throws IOException {
             do {
                 final int next = nextData();
-                if (next != 256) {
-                    return next;
+                if (next != NEED_DATA) {
+                    return 0xFF & next;
                 }
             } while (fill());
 
@@ -177,20 +204,67 @@ public class TELNETProtocol implements Closeable {
         public int read(byte[] buf, int off, int len) throws IOException {
             int ii = 0;
 
-            while (ii < len) {
-                final int next = nextData();
-                if (next == 256) {
-                    // Try to fill buffer without blocking.
-                    if (socket.available() == 0 && ii != 0) {
-                        // Would block, and we read at least one byte.
-                        break;
-                    }
+            try {
+                while (ii < len) {
+                    final int next = nextData();
+                    if (next == NEED_DATA) {
+                        // Try to fill buffer.
+                        if (socket.available() == 0) {
+                            // Would block.
+                            if (ii != 0) {
+                                break;
+                            }
+                        }
 
-                    fill();
-                } else {
-                    // Got next byte.
-                    buf[off++] = (byte) next;
-                    ii++;
+                        if (!fill()) {
+                            // End of stream.
+                            if (ii == 0) {
+                                return -1;
+                            }
+                            break;
+                        }
+                    } else {
+                        // Got next byte.
+                        buf[off++] = (byte) next;
+                        ii++;
+                    }
+                }
+            } catch (IOException ex) {
+                // Can't continue reading.
+                if (ii == 0) {
+                    throw ex;
+                }
+            }
+
+            return ii;
+        }
+
+        @Override
+        public long skip(long count) throws IOException {
+            // We still need to process every single byte, but we don't need to
+            // save it anywhere. Since the caller has expressed no interest in
+            // the skipped content, we also block to satisfy the request unless
+            // we reach an actual end of stream.
+            long ii = 0;
+
+            try {
+                while (ii < count) {
+                    final int next = nextData();
+                    if (next == NEED_DATA) {
+                        // Try to fill buffer.
+                        if (!fill()) {
+                            // End of stream.
+                            break;
+                        }
+                    } else {
+                        // Got next byte.
+                        ii++;
+                    }
+                }
+            } catch (IOException ex) {
+                // Can't continue reading.
+                if (ii == 0) {
+                    throw ex;
                 }
             }
 
@@ -210,138 +284,170 @@ public class TELNETProtocol implements Closeable {
             return true;
         }
 
-        private int nextData() {
+        private int nextData() throws IOException {
+            if (changed != null) {
+                // Re-throw exception until reset.
+                throw changed;
+            }
+
+            try {
+                return nextDataUnwrapped();
+            } catch (StreamStateException ex) {
+                changed = ex;
+                throw ex;
+            }
+        }
+
+        private int nextDataUnwrapped() throws IOException {
             while (roff < rlen) {
                 final byte nextByte = rbuf[roff++];
 
                 switch (state) {
+                //
+                // Look for command sequences.
+                //
                 case START:
-                    switch (nextByte) {
-                    case CODE_CR:
-                        state = StreamState.CR;
-                        break;
-
-                    case CODE_IAC:
-                        state = StreamState.IAC;
-                        break;
-
-                    default:
+                    if (nextByte == CODE_IAC) {
+                        state = CommandState.IAC;
+                    } else {
                         return nextByte;
                     }
                     break;
 
-                case CR:
-                    state = StreamState.START;
-                    switch (nextByte) {
-                    case CODE_LF:
-                        return CODE_LF;
-
-                    case CODE_NUL:
-                        break;
-
-                    default:
-                        // Not in compliance with RFC, but we'll be generous.
-                        --roff;
-                        break;
-                    }
-                    return CODE_CR;
-
+                //
+                // Process command sequence.
+                //
                 case IAC:
                     switch (nextByte) {
                     case CODE_IAC:
-                        state = StreamState.START;
+                        state = CommandState.START;
                         return CODE_IAC;
 
-                    case CODE_OPT_WILL:
-                    case CODE_OPT_WONT:
-                    case CODE_OPT_DO:
-                    case CODE_OPT_DONT:
-                        state = StreamState.OPTION;
-                        savedByte = nextByte;
+                    case CODE_WILL:
+                        state = CommandState.OPTION_WILL;
                         break;
 
-                    case CODE_SUB_SB:
-                        state = StreamState.NEGOTIATION_BEGIN;
+                    case CODE_WONT:
+                        state = CommandState.OPTION_WONT;
                         break;
 
-                    case CODE_NOP:
+                    case CODE_DO:
+                        state = CommandState.OPTION_DO;
+                        break;
+
+                    case CODE_DONT:
+                        state = CommandState.OPTION_DONT;
+                        break;
+
+                    case CODE_SB:
+                        state = CommandState.NEGOTIATION_BEGIN;
+                        break;
+
                     case CODE_DataMark:
-                    case CODE_BRK:
-                    case CODE_FUN_IP:
-                    case CODE_FUN_AO:
-                    case CODE_FUN_AYT:
-                    case CODE_FUN_EC:
-                    case CODE_FUN_EL:
-                    case CODE_GA:
-                        // TODO: Other TELNET commands.
-                        state = StreamState.START;
+                        // Java doesn't support TCP Urgent data, and DM is
+                        // somewhat useless anyway. We can safely treat DM
+                        // as a no-op.
+                    case CODE_NOP:
+                        // Do nothing.
+                        state = CommandState.START;
                         break;
 
                     default:
-                        // Not in compliance with RFC, but we'll be generous.
-                        state = StreamState.START;
+                        // Deliver all other commands to event handler.
+                        state = CommandState.START;
+                        inHandler.processCommand(nextByte);
                         break;
                     }
                     break;
 
-                case OPTION:
-                    state = StreamState.START;
-                    switch (savedByte) {
-                    case CODE_OPT_WILL:
-                    case CODE_OPT_WONT:
-                    case CODE_OPT_DO:
-                    case CODE_OPT_DONT:
-                        // TODO: Option negotiation.
-                        break;
-
-                    default:
-                        // If this ever happens, we screwed up.
-                        throw new AssertionError();
-                    }
+                //
+                // Process options.
+                //
+                case OPTION_WILL:
+                    state = CommandState.START;
+                    inHandler.processWILL(getUnsigned(nextByte));
                     break;
 
+                case OPTION_WONT:
+                    state = CommandState.START;
+                    inHandler.processWONT(getUnsigned(nextByte));
+                    break;
+
+                case OPTION_DO:
+                    state = CommandState.START;
+                    inHandler.processDO(getUnsigned(nextByte));
+                    break;
+
+                case OPTION_DONT:
+                    state = CommandState.START;
+                    inHandler.processDONT(getUnsigned(nextByte));
+                    break;
+
+                //
+                // Process option sub-negotiation.
+                //
                 case NEGOTIATION_BEGIN:
-                    state = StreamState.NEGOTIATION;
-                    // TODO: Option sub-negotiation code.
+                    state = CommandState.NEGOTIATION;
+                    inHandler.beginParam(getUnsigned(nextByte));
                     break;
 
                 case NEGOTIATION:
                     if (nextByte == CODE_IAC) {
-                        state = StreamState.NEGOTIATION_IAC;
+                        state = CommandState.NEGOTIATION_IAC;
                     } else {
-                        // TODO: Option sub-negotiation parameter.
+                        inHandler.appendParam(nextByte);
                     }
                     break;
 
                 case NEGOTIATION_IAC:
                     switch (nextByte) {
-                    case CODE_SUB_SE:
-                        state = StreamState.START;
-                        // TODO: Option sub-negotiation termination.
+                    case CODE_SE:
+                        state = CommandState.START;
+                        inHandler.endParam();
                         break;
 
                     case CODE_IAC:
-                        state = StreamState.NEGOTIATION;
-                        // TODO: Add IAC to parameter.
+                        state = CommandState.NEGOTIATION;
+                        inHandler.appendParam(CODE_IAC);
                         break;
 
                     default:
                         // Not in compliance with RFC, but we'll be generous.
-                        state = StreamState.NEGOTIATION;
+                        state = CommandState.NEGOTIATION;
+                        inHandler.appendParam(CODE_IAC);
+                        inHandler.appendParam(nextByte);
                         break;
                     }
                     break;
                 }
             }
 
-            return 256; // -1 == (byte) 255
+            return NEED_DATA;
         }
     }
 
+    //
+    // Translate raw data bytes to TELNET output stream.
+    //
     private final class OutputFilter extends OutputStream {
+        private final byte[] wbuf;
+        private int wlen;
+
+        private OutputFilter(byte[] wbuf) {
+            this.wbuf = wbuf;
+        }
+
         @Override
-        public void write(int octet) throws IOException {
-            nextData((byte) octet);
+        public void flush() throws IOException {
+            // This doesn't flush all the way to the socket, just empties the
+            // write buffer.
+            socket.write(wlen);
+            wlen = 0;
+        }
+
+        @Override
+        public void write(int nextByte) throws IOException {
+            nextData((byte) nextByte);
         }
 
         @Override
@@ -351,69 +457,78 @@ public class TELNETProtocol implements Closeable {
             }
         }
 
-        private void writeByte(final byte nextByte) throws IOException {
-            assert wlen >= 0 && wlen < wbuf.length;
-
-            wbuf[wlen++] = nextByte;
-
-            if (wlen == wbuf.length) {
-                socket.write(wlen);
-                wlen = 0;
+        private void reserve(int len) throws IOException {
+            if (wlen + len > wbuf.length) {
+                flush();
             }
         }
 
         private void nextData(final byte nextByte) throws IOException {
-            switch (nextByte) {
-            case CODE_LF:
-                writeByte(CODE_CR);
-                writeByte(CODE_LF);
-                break;
+            assert wlen >= 0 && wlen <= wbuf.length;
 
-            case CODE_CR:
-                writeByte(CODE_CR);
-                writeByte(CODE_NUL);
-                break;
-
-            case CODE_IAC:
-                writeByte(CODE_IAC);
-                writeByte(CODE_IAC);
-                break;
-
-            default:
-                writeByte(nextByte);
-                break;
+            // Since writes can throw exceptions, we must check that the buffer
+            // has enough space first, then write to the buffer. Otherwise, a
+            // previous write could have already filled the buffer.
+            if (nextByte == CODE_IAC) {
+                // Escaping IAC requires two bytes.
+                reserve(2);
+                wbuf[wlen++] = CODE_IAC;
+            } else if (wlen == wbuf.length) {
+                flush();
             }
+
+            wbuf[wlen++] = nextByte;
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        InetAddress address = InetAddress.getByName(args[0]);
-        int port = Integer.parseInt(args[1]);
-
-        InetSocketAddress socketAddress = new InetSocketAddress(address, port);
-        SocketConnection socket = new SocketConnection(socketAddress, null);
-
-        TELNETProtocol connection = null;
-        try {
-            connection = new TELNETProtocol(socket);
-        } finally {
-            if (connection == null) {
-                socket.close();
-            }
+    //
+    // Event handler for adding commands to the output stream.
+    //
+    private final class OutputEventHandler implements TELNETEventHandler {
+        @Override
+        public void processCommand(byte code) {
         }
 
-        try {
-            Reader reader = connection.getReader();
+        @Override
+        public void processWILL(int option) throws IOException {
+            writeOption(CODE_WILL, option);
+        }
 
-            char[] rbuf = new char[4096];
-            int rlen;
-            while ((rlen = reader.read(rbuf)) != -1) {
-                for (int ii = 0; ii < rlen; ii++) {
-                    System.out.print(rbuf[ii]);
-                }
-            }
-        } finally {
-            connection.close();
+        @Override
+        public void processWONT(int option) throws IOException {
+            writeOption(CODE_WONT, option);
+        }
+
+        @Override
+        public void processDO(int option) throws IOException {
+            writeOption(CODE_DO, option);
+        }
+
+        @Override
+        public void processDONT(int option) throws IOException {
+            writeOption(CODE_DONT, option);
+        }
+
+        @Override
+        public void beginParam(int option) {
+        }
+
+        @Override
+        public void endParam() throws StreamStateException {
+        }
+
+        @Override
+        public void appendParam(byte nextByte) {
+        }
+
+        private void writeOption(byte code, int option) throws IOException {
+            assert option >= 0 && option < 256;
+
+            System.err.format("OPTION %d=%d%n", getUnsigned(code), option);
+            out.reserve(3);
+            out.wbuf[out.wlen++] = CODE_IAC;
+            out.wbuf[out.wlen++] = code;
+            out.wbuf[out.wlen++] = (byte) option;
         }
     }
 }
