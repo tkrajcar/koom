@@ -105,6 +105,18 @@ public abstract class TELNETOption {
         }
     }
 
+    public void beginParam() {
+        // Discard by default.
+    }
+
+    public void endParam() throws IOException {
+        // Discard by default.
+    }
+
+    public void appendParam(byte nextByte) {
+        // Discard by default.
+    }
+
     protected abstract void requestEnable() throws IOException;
 
     protected abstract void requestDisable() throws IOException;
