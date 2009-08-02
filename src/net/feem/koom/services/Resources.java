@@ -42,6 +42,23 @@ public class Resources {
     }
 
     /**
+     * Gets a reader that treats an input stream as UTF-8 text.
+     * 
+     * @param stream
+     *            input stream
+     * 
+     * @return UTF-8 reader
+     */
+    public static Reader getInputStreamReader(InputStream stream) {
+        try {
+            return new InputStreamReader(stream, "UTF-8");
+        } catch (UnsupportedEncodingException ex) {
+            // All JVMs are required to support UTF-8.
+            throw new AssertionError(ex);
+        }
+    }
+
+    /**
      * Gets the contents of a resource as an icon.
      * 
      * @param name
@@ -67,22 +84,12 @@ public class Resources {
      */
     public static String getResourceAsText(String name) {
         // Construct UTF-8 reader for the resource.
-        Reader reader;
-
         InputStream stream = getResourceAsStream(name);
         if (stream == null) {
             return null;
         }
 
-        stream = new BufferedInputStream(getResourceAsStream(name));
-
-        try {
-            reader = new InputStreamReader(stream, "UTF-8");
-        } catch (UnsupportedEncodingException ex) {
-            // All JVMs are required to support UTF-8.
-            Utility.close(stream);
-            return null;
-        }
+        Reader reader = getInputStreamReader(new BufferedInputStream(stream));
 
         // Return string from resource contents.
         StringBuilder text = new StringBuilder();
