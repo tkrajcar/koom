@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Koom client" default="package">
+	<path id="compile.cp">
+		<fileset dir="lib">
+			<include name="compile/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="clean" description="Clean all generated files">
+		<delete dir="bin" />
+		<delete dir="tests/bin" />
+		<delete file="dist/koom.jar" />
+	</target>
+
+	<target name="compile" description="Compile Koom client" depends="compile-java, update-buildnumber" />
+
+	<target name="compile-java">
+		<mkdir dir="bin" />
+		<javac srcdir="src" destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
+	</target>
+
+	<target name="update-buildnumber" if="compile.updated">
+		<buildnumber />
+		<echo>Built Koom client version ${koom.version} build ${build.number}</echo>
+	</target>
+
+	<target name="package" description="Package Koom client">
+		<jar destfile="dist/koom.jar" index="yes" level="9" strict="fail">
+			<manifest>
+				<attribute name="Main-Class" value="net.feem.koom.Main" />
+				<attribute name="Class-Path" value="koom-mechrefs.jar" />
+
+				<attribute name="Specification-Title" value="Koom" />
+				<attribute name="Specification-Version" value="${koom.version}" />
+				<attribute name="Specification-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Implementation-Title" value="net.feem.koom" />
+				<attribute name="Implementation-Version" value="${build.number}" />
+				<attribute name="Implementation-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Sealed" value="true" />
+			</manifest>
+
+			<indexjars>
+				<fileset dir="dist">
+					<include name="koom-*.jar" />
+				</fileset>
+			</indexjars>
+
+			<fileset dir=".">
+				<include name="COPYING" />
+			</fileset>
+
+			<fileset dir="res" />
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+	<target name="test" description="Run all tests" depends="compile-tests">
+	</target>
+
+	<target name="compile-tests">
+	</target>
+</project>

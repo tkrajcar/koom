@@ -8,75 +8,42 @@
 	<!-- No good way to enter secrets in Ant, so a file is best. -->
 	<property file="keystore.storepass" />
 
-	<path id="compile.cp">
-		<fileset dir="lib">
-			<include name="compile/*.jar" />
-		</fileset>
-	</path>
-
 	<!--
-	  - General.
+	  - Targets.
 	  -->
-	<target name="all" depends="clean, test, sign" description="Build for distribution" />
+	<target name="all" description="Build for distribution" depends="clean, test, sign" />
 
 	<target name="clean" description="Clean all generated files">
-		<delete dir="bin" />
-		<delete dir="tests/bin" />
+		<ant antfile="build-client.xml" target="clean" />
+		<ant antfile="build-mechrefs.xml" target="clean" />
+		<delete dir="dist" />
 	</target>
 
-	<!--
-	  - Main.
-	  -->
-	<target name="compile" description="Compile Koom client">
-		<mkdir dir="bin" />
-		<javac srcdir="src" destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
+	<target name="compile" description="Compile Koom">
+		<ant antfile="build-client.xml" target="compile" />
 	</target>
 
-	<target name="update-buildnumber" if="compile.updated">
-		<buildnumber />
-		<echo>Built Koom client version ${koom.version} build ${build.number}</echo>
+	<target name="test" description="Run all tests" depends="compile">
+		<ant antfile="build-client.xml" target="test" />
 	</target>
 
-	<target name="package" depends="compile, update-buildnumber" description="Package Koom client">
+	<target name="package" description="Package Koom" depends="compile">
+		<mkdir dir="dist" />
 		<property file="build.number" />
-		<jar destfile="koom.jar" index="yes" level="9" strict="fail">
-			<manifest>
-				<attribute name="Main-Class" value="net.feem.koom.Main" />
+		<ant antfile="build-mechrefs.xml" target="package" />
+		<ant antfile="build-client.xml" target="package" />
+	</target>
 
-				<attribute name="Specification-Title" value="Koom" />
-				<attribute name="Specification-Version" value="${koom.version}" />
-				<attribute name="Specification-Vendor" value="Tim Krajcar" />
-
-				<attribute name="Implementation-Title" value="net.feem.koom" />
-				<attribute name="Implementation-Version" value="${build.number}" />
-				<attribute name="Implementation-Vendor" value="Tim Krajcar" />
-
-				<attribute name="Sealed" value="true" />
-			</manifest>
-
-			<fileset dir=".">
-				<include name="COPYING" />
+	<target name="sign" description="Sign Koom" depends="package">
+		<signjar keystore="keystore" alias="koom" storepass="${storepass}">
+			<fileset dir="dist">
+				<include name="koom.jar" />
+				<include name="koom-*.jar" />
 			</fileset>
-
-			<fileset dir="res" />
-			<fileset dir="bin" />
-		</jar>
+		</signjar>
 	</target>
 
-	<target name="sign" depends="package" description="Sign Koom client">
-		<signjar jar="koom.jar" keystore="keystore" alias="koom" storepass="${storepass}" />
-	</target>
-
-	<target name="run" depends="package" description="Run Koom client">
-		<java jar="koom.jar" fork="true" />
-	</target>
-
-	<!--
-	  - Tests.
-	  -->
-	<target name="test" depends="compile-tests, compile" description="Run all tests">
-	</target>
-
-	<target name="compile-tests">
+	<target name="run" description="Run Koom" depends="package">
+		<java jar="dist/koom.jar" fork="true" />
 	</target>
 </project>

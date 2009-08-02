@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Koom - Mechrefs" default="package">
+	<target name="clean" description="Clean all generated files">
+		<delete file="dist/koom-mechrefs.jar" />
+	</target>
+
+	<target name="package" description="Package Koom mechrefs">
+		<jar destfile="dist/koom-mechrefs.jar" level="9" strict="fail">
+			<manifest>
+				<attribute name="Main-Class" value="net.feem.koom.btech.TemplateFileParser" />
+
+				<attribute name="Specification-Title" value="Koom Mechrefs" />
+				<attribute name="Specification-Version" value="${koom.version}" />
+				<attribute name="Specification-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Implementation-Title" value="units" />
+				<attribute name="Implementation-Version" value="${build.number}" />
+				<attribute name="Implementation-Vendor" value="Tim Krajcar" />
+
+				<attribute name="Sealed" value="true" />
+			</manifest>
+
+			<fileset dir="contrib">
+				<include name="units/**" />
+			</fileset>
+		</jar>
+	</target>
+</project>
