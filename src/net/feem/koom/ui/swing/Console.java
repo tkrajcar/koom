@@ -19,12 +19,11 @@
 package net.feem.koom.ui.swing;
 
 import java.awt.BorderLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextPane;
 
 import net.feem.koom.services.Preferences;
@@ -35,27 +34,32 @@ import net.feem.koom.services.Version;
  */
 @SuppressWarnings("serial")
 class Console extends JPanel {
-    private final JTextField entry;
+    private final JTextArea entry;
 
     Console() {
         super(new BorderLayout());
 
-        entry = new JTextField(80);
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true);
+        split.setResizeWeight(1);
+
+        entry = new JTextArea(5, 80);
         entry.setFont(Preferences.getMonoFont());
-        entry.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent evt) {
-                entry.setText(null);
-            }
-        });
-        add(entry, BorderLayout.SOUTH);
+        // entry.addActionListener(new ActionListener() {
+        // @Override
+        // public void actionPerformed(ActionEvent evt) {
+        // entry.setText(null);
+        // }
+        // });
+        split.setBottomComponent(entry);
 
         JTextPane text = new JTextPane();
         text.setEditable(false);
         text.setFont(Preferences.getMonoFont());
         text.setText(Version.getShortLicense());
         JScrollPane scroll = new JScrollPane(text);
-        add(scroll);
+        split.setTopComponent(scroll);
+
+        add(split);
     }
 
     public void doFocus() {
