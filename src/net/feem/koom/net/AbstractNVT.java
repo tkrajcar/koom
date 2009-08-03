@@ -25,20 +25,21 @@ import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 
-import net.feem.koom.services.Utility;
-
 /**
- * A high level interface to the TELNET protocol. You should generally interface
- * with this class, in preference to using {@link TELNETProtocol} directly.
+ * Base class for other network VT implementations. A network VT provides a high
+ * level interface to the TELNET protocol. You should generally interface with
+ * classes derived from this one, in preference to using {@link TELNETProtocol}
+ * directly.
  * 
  * @author cu5
  */
-public class NetworkVT {
-    private static final byte[] TERMINAL_TYPE = Utility.getASCII("KOOM");
-
+public abstract class AbstractNVT {
     private static enum InputState {
         // Waiting for input.
         START,
+
+        // Stream configuration changed.
+        CONFIG,
 
         // End of input.
         STOP, STOP_UNTERMINATED, STOP_EOF;
@@ -55,12 +56,9 @@ public class NetworkVT {
     private final TELNETEventHandler outputHandler;
 
     private boolean sawGA;
-    private final TTYPEOption optionTTYPE = new TTYPEOption();
-    private final NAWSOption optionNAWS = new NAWSOption();
 
-    public NetworkVT(TELNETProtocol proto) throws IOException {
+    protected AbstractNVT(TELNETProtocol proto) {
         this.proto = proto;
-        proto.setInputHandler(new InputEventHandler());
 
         try {
             reader = new InputStreamReader(proto.getInputStream(), "UTF-8");
@@ -73,8 +71,14 @@ public class NetworkVT {
         outputHandler = proto.getOutputEventHandler();
     }
 
-    public void setWindowSize(int rows, int columns) throws IOException {
-        optionNAWS.setWindowSize(rows, columns);
+    /**
+     * Gets the object used for synchronizing writes. Note that this includes
+     * synchronizing modifications to state that affects writes.
+     * 
+     * @return lock object
+     */
+    public Object getWriteLock() {
+        return this;
     }
 
     /**
@@ -124,9 +128,10 @@ public class NetworkVT {
 
         // Read characters up until the next boundary.
         try {
-            LOOP: while (ii < len) {
+            while (ii < len) {
                 if (!reader.ready() && ii != 0) {
-                    break LOOP;
+                    // Would block, and we already have data.
+                    break;
                 }
 
                 final int nextChar = reader.read();
@@ -137,7 +142,7 @@ public class NetworkVT {
                     }
 
                     inputState = InputState.STOP_EOF;
-                    break LOOP;
+                    return ii;
                 }
 
                 switch (nextChar) {
@@ -167,7 +172,7 @@ public class NetworkVT {
                     // Our behavior is more useful to a MU* client.
                     sawCR = false;
                     inputState = InputState.STOP;
-                    break LOOP;
+                    return ii;
 
                 default:
                     if (sawCR) {
@@ -178,7 +183,7 @@ public class NetworkVT {
 
                         if (ii == len) {
                             savedChar = nextChar;
-                            break LOOP;
+                            return ii;
                         }
                     }
 
@@ -192,12 +197,13 @@ public class NetworkVT {
                 // Go Ahead.
                 proto.clear();
                 sawGA = false;
-            } else {
-                // Not supposed to happen.
-                throw new AssertionError("Unexpected state change");
+
+                inputState = InputState.STOP_UNTERMINATED;
+                return ii;
             }
 
-            inputState = InputState.STOP_UNTERMINATED;
+            // Stream reconfigured.
+            inputState = InputState.CONFIG;
         } catch (IOException ex) {
             // I/O error.
             if (ii == 0) {
@@ -205,8 +211,27 @@ public class NetworkVT {
             }
         }
 
-        // Finish read.
+        // Make deferred configuration changes before returning.
+        if (doReconfig()) {
+            inputState = InputState.CONFIG;
+        }
+
         return ii;
+    }
+
+    /**
+     * Tests if the most recent read ended because of a reconfiguration event.
+     * 
+     * @return if there was a reconfiguration event
+     */
+    public boolean readIsReconfig() {
+        switch (inputState) {
+        case CONFIG:
+            return true;
+
+        default:
+            return false;
+        }
     }
 
     /**
@@ -255,7 +280,7 @@ public class NetworkVT {
      *             if there was an underlying I/O error
      */
     public void writeLine(char[] cbuf, int off, int len) throws IOException {
-        synchronized (proto) {
+        synchronized (getWriteLock()) {
             for (int ii = 0; ii < len; ii++) {
                 final char nextChar = cbuf[off++];
                 writer.write(nextChar);
@@ -277,13 +302,13 @@ public class NetworkVT {
      *             if there was an underlying I/O error
      */
     public void flush() throws IOException {
-        synchronized (proto) {
-            writer.flush();
-            proto.flush();
+        synchronized (getWriteLock()) {
+            flushInput();
+            flushProtocol();
         }
     }
 
-    private final class InputEventHandler implements TELNETEventHandler {
+    protected class InputEventHandler implements TELNETEventHandler {
         private TELNETOption subOption;
 
         @Override
@@ -291,54 +316,33 @@ public class NetworkVT {
             if (code == TELNETProtocol.CODE_GA) {
                 sawGA = true;
                 throw new StreamStateException();
+            } else {
+                // Treat the other commands as no-ops.
             }
         }
 
         @Override
         public void processDO(int option) throws IOException {
-            synchronized (proto) {
-                switch (option) {
-                case TTYPEOption.OPTION_CODE:
-                    optionTTYPE.enable();
-                    break;
-
-                case NAWSOption.OPTION_CODE:
-                    optionNAWS.enable();
-                    break;
-
-                default:
-                    // Unsupported option.
-                    outputHandler.processWONT(option);
-                    proto.flush();
-                }
+            synchronized (getWriteLock()) {
+                // Unsupported option.
+                flushInput();
+                outputHandler.processWONT(option);
+                flushProtocol();
             }
         }
 
         @Override
         public void processDONT(int option) throws IOException {
-            synchronized (proto) {
-                switch (option) {
-                case TTYPEOption.OPTION_CODE:
-                    optionTTYPE.disable();
-                    break;
-
-                case NAWSOption.OPTION_CODE:
-                    optionNAWS.disable();
-                    break;
-
-                default:
-                    // Already WONTing unsupported local option.
-                    break;
-                }
-            }
+            // Already WONTing unsupported local option.
         }
 
         @Override
         public void processWILL(int option) throws IOException {
-            synchronized (proto) {
+            synchronized (getWriteLock()) {
                 // Unsupported remote option.
+                flushInput();
                 outputHandler.processDONT(option);
-                proto.flush();
+                flushProtocol();
             }
         }
 
@@ -348,19 +352,12 @@ public class NetworkVT {
         }
 
         @Override
-        public void beginParam(int option) {
-            switch (option) {
-            case TTYPEOption.OPTION_CODE:
-                subOption = optionTTYPE;
-                break;
-
-            default:
+        public void beginParam(int option) throws IOException {
+            if (subOption == null) {
                 // Unsupported option.
-                subOption = null;
-                return;
+            } else {
+                subOption.beginParam();
             }
-
-            subOption.beginParam();
         }
 
         @Override
@@ -368,152 +365,57 @@ public class NetworkVT {
             if (subOption == null) {
                 // Unsupported option.
             } else {
-                subOption.endParam();
+                try {
+                    subOption.endParam();
+                } finally {
+                    setSubOption(null);
+                }
             }
         }
 
         @Override
-        public void appendParam(byte nextByte) {
+        public void appendParam(byte nextByte) throws IOException {
             if (subOption == null) {
                 // Unsupported option.
             } else {
                 subOption.appendParam(nextByte);
             }
         }
-    }
 
-    /**
-     * Terminal Type option (RFC 1091).
-     */
-    private final class TTYPEOption extends TELNETOption {
-        private static final int OPTION_CODE = 24;
-
-        private static final byte SUB_IS = (byte) 0;
-        private static final byte SUB_SEND = (byte) 1;
-
-        private int paramCount;
-
-        private TTYPEOption() {
-            super(OPTION_CODE);
-        }
-
-        @Override
-        public void beginParam() {
-            paramCount = 1;
-        }
-
-        @Override
-        public void endParam() throws IOException {
-            if (paramCount == 2) {
-                // Send TTYPE.
-                paramCount = 0;
-
-                synchronized (proto) {
-                    outputHandler.beginParam(OPTION_CODE);
-                    outputHandler.appendParam(SUB_IS);
-
-                    for (byte nextByte : TERMINAL_TYPE) {
-                        outputHandler.appendParam(nextByte);
-                    }
-
-                    outputHandler.endParam();
-                    proto.flush();
-                }
-            }
-        }
-
-        @Override
-        public void appendParam(byte nextByte) {
-            if (paramCount == 1 && nextByte == SUB_SEND) {
-                // Request for TTYPE from server.
-                paramCount = 2;
-            } else {
-                // Parameter parsing failed.
-                paramCount = -1;
-            }
-        }
-
-        @Override
-        protected void requestEnable() throws IOException {
-            outputHandler.processWILL(OPTION_CODE);
-            proto.flush();
-        }
-
-        @Override
-        protected void requestDisable() throws IOException {
-            outputHandler.processWONT(OPTION_CODE);
-            proto.flush();
+        protected void setSubOption(TELNETOption subOption) {
+            this.subOption = subOption;
         }
     }
 
     /**
-     * Negotiate About Window Size option (RFC 1073).
+     * Flushes user input to the TELNET protocol. This ensures any user input is
+     * written out before we write directly to the {@link TELNETProtocol}.
+     * 
+     * @throws IOException
+     *             if there's an I/O error
      */
-    private final class NAWSOption extends TELNETOption {
-        private static final int OPTION_CODE = 31;
+    protected void flushInput() throws IOException {
+        writer.flush();
+    }
 
-        // Unknown window size; call setWindowSize() to initialize.
-        private int rows = 0;
-        private int cols = 0;
+    /**
+     * Flushes data from the TELNET protocol to the network. This ensures any
+     * buffered data is written out to the network.
+     * 
+     * @throws IOException
+     *             if there's an I/O error
+     */
+    protected void flushProtocol() throws IOException {
+        proto.flush();
+    }
 
-        private NAWSOption() {
-            super(OPTION_CODE);
-        }
-
-        public void setWindowSize(int rows, int cols) throws IOException {
-            if (rows < 1 || rows > 65535 || cols < 1 || cols > 65535) {
-                throw new IllegalArgumentException("Invalid window size");
-            }
-
-            if (rows == this.rows && cols == this.cols) {
-                // No change.
-                return;
-            }
-
-            if (isEnabled()) {
-                synchronized (proto) {
-                    sendWindowSize(rows, cols);
-                }
-            }
-
-            this.rows = rows;
-            this.cols = cols;
-        }
-
-        @Override
-        protected void requestEnable() throws IOException {
-            outputHandler.processWILL(OPTION_CODE);
-            proto.flush();
-        }
-
-        @Override
-        protected void requestDisable() throws IOException {
-            outputHandler.processWONT(OPTION_CODE);
-            proto.flush();
-        }
-
-        @Override
-        protected void doEnable() throws IOException {
-            sendWindowSize(rows, cols);
-        }
-
-        private void sendWindowSize(int rows, int cols) throws IOException {
-            if (rows == 0 && cols == 0) {
-                // Unknown window size, don't send anything.
-                return;
-            }
-
-            // Parameter: WIDTH[1] WIDTH[0] HEIGHT[1] HEIGHT[0]
-            outputHandler.beginParam(getOption());
-
-            outputHandler.appendParam((byte) (cols >>> 8));
-            outputHandler.appendParam((byte) cols);
-            outputHandler.appendParam((byte) (rows >>> 8));
-            outputHandler.appendParam((byte) rows);
-
-            outputHandler.endParam();
-
-            proto.flush();
-        }
+    /**
+     * Called when it's safe to perform deferred reconfiguration.
+     * 
+     * @return if reconfiguration was performed
+     */
+    protected boolean doReconfig() {
+        // Nothing to reconfig by default.
+        return false;
     }
 }

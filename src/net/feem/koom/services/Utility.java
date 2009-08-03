@@ -27,6 +27,26 @@ import java.io.UnsupportedEncodingException;
  */
 public class Utility {
     /**
+     * Computes thread priority, subject to upper and lower bounds.
+     * 
+     * @param adjust
+     *            priority adjustment
+     * 
+     * @return actual priority
+     */
+    public static int getPriority(int adjust) {
+        int request = Thread.NORM_PRIORITY + adjust;
+
+        if (request > Thread.MAX_PRIORITY) {
+            return Thread.MAX_PRIORITY;
+        } else if (request < Thread.MIN_PRIORITY) {
+            return Thread.MIN_PRIORITY;
+        } else {
+            return request;
+        }
+    }
+
+    /**
      * Closes a closeable object, ignoring <code>null</code> values and
      * {@link IOException}s as a convenience.
      * 

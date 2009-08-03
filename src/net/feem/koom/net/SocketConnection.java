@@ -51,30 +51,37 @@ public class SocketConnection implements Closeable {
     }
 
     /**
-     * Creates a connection over a network socket.
-     * 
-     * @param address
-     *            remote address
-     * @param proxy
-     *            TODO: replace this with a generic configuration object
-     * 
-     * @throws IOException
+     * Gets a connected socket from a socket address and proxy configuration.
      */
-    public SocketConnection(SocketAddress address, Proxy proxy)
+    private static Socket getSocket(SocketAddress address, Proxy proxy)
             throws IOException {
+        Socket socket;
         if (proxy == null) {
             socket = new Socket();
         } else {
             socket = new Socket(proxy);
         }
 
-        boolean success = false;
+        socket.connect(address);
+        return socket;
+    }
 
+    /**
+     * Creates a <code>SocketConnection</code> from an existing socket.
+     * 
+     * @param socket
+     *            an existing socket
+     * 
+     * @throws IOException
+     *             if there's an I/O error
+     */
+    public SocketConnection(Socket socket) throws IOException {
+        this.socket = socket;
+
+        boolean success = false;
         try {
             socket.setTcpNoDelay(true); // make configurable?
             socket.setKeepAlive(true); // definitely make configurable
-
-            socket.connect(address);
 
             in = socket.getInputStream();
             rbuf = new byte[getSize(socket.getReceiveBufferSize())];
@@ -88,6 +95,22 @@ public class SocketConnection implements Closeable {
                 socket.close();
             }
         }
+    }
+
+    /**
+     * Creates a connection over a network socket.
+     * 
+     * @param address
+     *            remote address
+     * @param proxy
+     *            TODO: replace this with a generic configuration object
+     * 
+     * @throws IOException
+     *             if there's an I/O error
+     */
+    public SocketConnection(SocketAddress address, Proxy proxy)
+            throws IOException {
+        this(getSocket(address, proxy));
     }
 
     @Override
@@ -105,6 +128,10 @@ public class SocketConnection implements Closeable {
 
     public void flush() throws IOException {
         out.flush();
+    }
+
+    public void setTimeout(int timeout) throws IOException {
+        socket.setSoTimeout(timeout);
     }
 
     /**
