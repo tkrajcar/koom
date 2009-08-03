@@ -44,6 +44,15 @@ public abstract class TELNETOption {
     }
 
     /**
+     * Performs deferred work. An option frequently can't come into effect until
+     * any previously buffered data has been processed; this method can be
+     * called after such processing has been completed.
+     */
+    public void doDeferred() {
+        // Nothing deferred by default.
+    }
+
+    /**
      * Tries to enable this option.
      * 
      * @throws IOException

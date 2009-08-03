@@ -36,7 +36,7 @@ import java.io.OutputStream;
  * This class is a low-level interface designed for performance over safety, and
  * must be used carefully by the caller with respect to synchronization and
  * order of operations. Generally, you shouldn't use this class directly unless
- * you know what you're doing; see {@link NetworkVT} instead.
+ * you know what you're doing; see {@link AbstractNVT} instead.
  * </p>
  * 
  * @author cu5
@@ -108,11 +108,8 @@ public class TELNETProtocol implements Closeable {
      *            remote connection
      * @param handler
      *            TELNET stream event handler
-     * 
-     * @throws IOException
-     *             on I/O errors
      */
-    public TELNETProtocol(SocketConnection socket) throws IOException {
+    public TELNETProtocol(SocketConnection socket) {
         this.socket = socket;
 
         in = new InputFilter(socket.getReceiveBuffer());
@@ -458,13 +455,6 @@ public class TELNETProtocol implements Closeable {
 
         private OutputFilter(byte[] wbuf) {
             this.wbuf = wbuf;
-        }
-
-        @Override
-        public void flush() throws IOException {
-            // This doesn't flush all the way to the socket, just empties the
-            // write buffer.
-            emptyBuffer();
         }
 
         @Override

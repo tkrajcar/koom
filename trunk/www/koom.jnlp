@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<jnlp> <!-- Set codebase and href attribute for this JNLP file. -->
+<jnlp codebase="file:///var/www/koom" href="koom.jnlp"> <!-- Set codebase and href attribute for this JNLP file. -->
 	<information>
 		<title>Koom</title>
 		<vendor>Tim Krajcar</vendor>
