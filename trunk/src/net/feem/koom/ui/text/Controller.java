@@ -65,13 +65,13 @@ class Controller implements Runnable {
         socket.setTimeout(5000);
 
         // Allow 3 attempts.
-        server.read(cbuf, off, len);
+        //server.read(cbuf, off, len);
 
         // OK, they blew it.
     }
 
     // The magic string.
     private String getMagic() {
-
+        return null;
     }
 }
