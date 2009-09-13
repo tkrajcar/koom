@@ -12,7 +12,6 @@
 		<delete dir="bin" />
 		<delete dir="tests/bin" />
 		<delete file="dist/unsigned/koom.jar" />
-		<delete dir="gen" />
 	</target>
 
 	<target name="generate" description="Generate Koom client source" depends="generate-uptodate" unless="generate.uptodate">
