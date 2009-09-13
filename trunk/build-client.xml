@@ -9,7 +9,7 @@
 	<target name="clean" description="Clean all generated files">
 		<delete dir="bin" />
 		<delete dir="tests/bin" />
-		<delete file="dist/koom.jar" />
+		<delete file="dist/unsigned/koom.jar" />
 	</target>
 
 	<target name="compile" description="Compile Koom client" depends="compile-java, update-buildnumber" />
@@ -25,7 +25,7 @@
 	</target>
 
 	<target name="package" description="Package Koom client">
-		<jar destfile="dist/koom.jar" index="yes" level="9" strict="fail">
+		<jar destfile="dist/unsigned/koom.jar" index="yes" level="9" strict="fail">
 			<manifest>
 				<attribute name="Main-Class" value="net.feem.koom.Main" />
 				<attribute name="Class-Path" value="koom-mechrefs.jar" />
@@ -42,7 +42,7 @@
 			</manifest>
 
 			<indexjars>
-				<fileset dir="dist">
+				<fileset dir="dist/unsigned">
 					<include name="koom-*.jar" />
 				</fileset>
 			</indexjars>

@@ -28,15 +28,19 @@
 	</target>
 
 	<target name="package" description="Package Koom" depends="compile">
-		<mkdir dir="dist" />
+		<mkdir dir="dist/unsigned" />
 		<property file="build.number" />
 		<ant antfile="build-mechrefs.xml" target="package" />
 		<ant antfile="build-client.xml" target="package" />
 	</target>
 
 	<target name="sign" description="Sign Koom" depends="package">
+		<copy todir="dist/signed">
+			<fileset dir="dist/unsigned" />
+		</copy>
+
 		<signjar keystore="keystore" alias="koom" storepass="${storepass}">
-			<fileset dir="dist">
+			<fileset dir="dist/signed">
 				<include name="koom.jar" />
 				<include name="koom-*.jar" />
 			</fileset>
@@ -44,6 +48,6 @@
 	</target>
 
 	<target name="run" description="Run Koom" depends="package">
-		<java jar="dist/koom.jar" fork="true" />
+		<java jar="dist/unsigned/koom.jar" fork="true" />
 	</target>
 </project>

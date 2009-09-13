@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="Koom - Mechrefs" default="package">
 	<target name="clean" description="Clean all generated files">
-		<delete file="dist/koom-mechrefs.jar" />
+		<delete file="dist/unsigned/koom-mechrefs.jar" />
 	</target>
 
 	<target name="package" description="Package Koom mechrefs">
-		<jar destfile="dist/koom-mechrefs.jar" level="9" strict="fail">
+		<jar destfile="dist/unsigned/koom-mechrefs.jar" level="9" strict="fail">
 			<manifest>
 				<attribute name="Main-Class" value="net.feem.koom.btech.TemplateFileParser" />
 
