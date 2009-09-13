@@ -19,6 +19,10 @@
 		<delete dir="dist" />
 	</target>
 
+	<target name="maintainer" description="Maintainer tasks">
+		<ant antfile="build-client.xml" target="generate" />
+	</target>
+
 	<target name="compile" description="Compile Koom">
 		<ant antfile="build-client.xml" target="compile" />
 	</target>

@@ -14,17 +14,13 @@
 		<delete file="dist/unsigned/koom.jar" />
 	</target>
 
-	<target name="generate" description="Generate Koom client source" depends="generate-uptodate" unless="generate.uptodate">
+	<target name="generate" description="Generate Koom client source">
 		<xjc srcfile="src/net/feem/koom/world/World.xsd" package="net.feem.koom.world.xml" />
-	</target>
-
-	<target name="generate-uptodate">
-		<uptodate property="generate.uptodate" srcfile="src/net/feem/koom/world/World.xsd" targetfile="gen/net/feem/koom/world/xml/package-info.java" />
 	</target>
 
 	<target name="compile" description="Compile Koom client" depends="compile-java, update-buildnumber" />
 
-	<target name="compile-java" depends="generate">
+	<target name="compile-java">
 		<copy todir="bin">
 			<fileset dir="src">
 				<include name="**/*.xsd" />
