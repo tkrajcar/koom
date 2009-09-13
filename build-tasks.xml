@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Tasks">
+	<macrodef name="xjc">
+		<attribute name="srcfile" />
+		<attribute name="package" />
+
+		<sequential>
+			<mkdir taskname="xjc" dir="gen" />
+			<exec taskname="xjc" executable="xjc" failonerror="true">
+				<arg value="-d" />
+				<arg file="gen" />
+				<arg value="-p" />
+				<arg value="@{package}" />
+				<arg file="@{srcfile}" />
+			</exec>
+		</sequential>
+	</macrodef>
+</project>

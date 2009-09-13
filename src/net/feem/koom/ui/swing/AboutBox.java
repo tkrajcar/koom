@@ -39,6 +39,7 @@ import net.feem.koom.services.Version;
  * @author cu5
  * 
  */
+@SuppressWarnings("serial")
 class AboutBox extends JDialog {
     private static final Document license = new PlainDocument();
 

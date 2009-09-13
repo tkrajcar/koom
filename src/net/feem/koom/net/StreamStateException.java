@@ -26,6 +26,7 @@ import java.io.IOException;
  * 
  * @author cu5
  */
+@SuppressWarnings("serial")
 public class StreamStateException extends IOException {
     public StreamStateException() {
     }

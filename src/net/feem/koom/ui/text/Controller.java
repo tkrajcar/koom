@@ -19,12 +19,15 @@
 package net.feem.koom.ui.text;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import net.feem.koom.net.ServerNVT;
 import net.feem.koom.net.SocketConnection;
 import net.feem.koom.net.TELNETProtocol;
 import net.feem.koom.services.Utility;
+import net.feem.koom.world.World;
 
 /**
  * Text-based session controller.
@@ -32,13 +35,28 @@ import net.feem.koom.services.Utility;
  * @author cu5
  */
 class Controller implements Runnable {
+    // Allow up to 3 attempts.
+    private static final int MAX_ATTEMPTS = 3;
+
+    // Wait up to roughly 30 seconds for success.
+    private static final long MAX_COMMAND_TIME = 30000;
+
     // Matches strings of the form "connect WORLD SECRET", ignoring whitespace.
     private static final Pattern loginPat = Pattern.compile(
-            "\\s*connect\\s+(\\S+)\\s+(\\S+)\\s*", Pattern.CASE_INSENSITIVE);
+            "\\s*con(?:nect)?\\s+(\\S+)\\s+(\\S+)\\s*",
+            Pattern.CASE_INSENSITIVE);
 
     private final SocketConnection socket;
     private final TELNETProtocol telnet;
     private final ServerNVT server;
+
+    private static void scrub(StringBuilder sb) {
+        for (int ii = 0; ii < sb.length(); ii++) {
+            sb.setCharAt(ii, '\0');
+        }
+
+        sb.setLength(0);
+    }
 
     public Controller(SocketConnection socket) {
         this.socket = socket;
@@ -48,30 +66,91 @@ class Controller implements Runnable {
 
     @Override
     public void run() {
-        // Wait for the initial command.
         try {
-            waitForCommand();
+            // Wait for the initial command.
+            World world = waitForHandshake();
+            if (world == null) {
+                System.out.println("Login failed");
+                return;
+            }
+
+            System.out.println("Connecting to " + world.getName());
+
+            // Proceed to main I/O loop.
         } catch (IOException ex) {
-            // Terminate the connection now.
+            // FIXME: Report error.
+            ex.printStackTrace();
+        } finally {
             Utility.close(telnet);
-            return;
         }
 
-        // Proceed to main I/O loop.
+        System.out.println("Connection closed");
     }
 
-    private void waitForCommand() throws IOException {
-        // Wait up to 5 seconds at a time.
-        socket.setTimeout(5000);
+    private World waitForHandshake() throws IOException {
+        // Read the initial login command.
+        StringBuilder sb = new StringBuilder(128);
+        char[] cbuf = new char[128];
 
-        // Allow 3 attempts.
-        //server.read(cbuf, off, len);
+        socket.setTimeout(1000);
+        try {
+            return readLogin(sb, cbuf);
+        } finally {
+            socket.setTimeout(0);
+
+            scrub(sb);
+
+            for (int ii = 0; ii < cbuf.length; ii++) {
+                cbuf[ii] = '\0';
+            }
+        }
+    }
+
+    private World readLogin(StringBuilder sb, char[] cbuf) throws IOException {
+        // Protect against excessive resource consumption.
+        int attempts = 0;
+        final long start = System.currentTimeMillis();
+
+        while (true) {
+            // Wait for I/O.
+            try {
+                int len = server.read(cbuf, 0, cbuf.length);
+                if (len == -1) {
+                    // End of stream.
+                    break;
+                }
+
+                sb.append(cbuf, 0, len);
+            } catch (SocketTimeoutException ex) {
+                // Interrupt handled by checking the time later.
+            }
+
+            if (server.readIsLine()) {
+                // Check attempt.
+                Matcher mat = loginPat.matcher(sb);
+                if (mat.matches()) {
+                    // TODO: Implement world management.
+                    World world = new World(mat.group(1));
+                    world.setSecret(mat.group(2).toCharArray());
+                    if (world.checkAuth(sb, mat.start(2), mat.end(2))) {
+                        return world;
+                    }
+                }
+
+                // Reset for next attempt.
+                if (++attempts == MAX_ATTEMPTS) {
+                    // Reached maximum number of attempts.
+                    break;
+                }
+
+                scrub(sb);
+            } else if (System.currentTimeMillis() - start > MAX_COMMAND_TIME) {
+                // Exceeded maximum time.
+                break;
+            }
+        }
 
         // OK, they blew it.
-    }
-
-    // The magic string.
-    private String getMagic() {
         return null;
     }
 }

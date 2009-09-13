@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://koom.feem.net/schemas/World.xsd"
+    xmlns:tns="http://koom.feem.net/schemas/World.xsd"
+    elementFormDefault="qualified">
+    <element name="world">
+        <complexType>
+            <sequence>
+                <element name="basic" type="tns:BasicInfoType" />
+                <element name="extra" type="tns:ExtraInfoType"
+                    minOccurs="0" maxOccurs="unbounded" />
+            </sequence>
+        </complexType>
+    </element>
+
+    <complexType name="BasicInfoType">
+        <all>
+            <element name="name" type="string" />
+            <element name="secret" type="tns:EncryptedType" />
+            <element name="host" type="anyURI" />
+            <element name="auth" type="tns:AuthType" minOccurs="0" />
+        </all>
+    </complexType>
+
+    <complexType name="ExtraInfoType">
+        <sequence>
+            <any processContents="lax" />
+        </sequence>
+    </complexType>
+
+    <complexType name="AuthType">
+        <all>
+            <element name="username" type="tns:EncryptedType" />
+            <element name="password" type="tns:EncryptedType" />
+        </all>
+        <attribute name="method" type="string" use="required" />
+    </complexType>
+
+    <complexType name="EncryptedType">
+        <simpleContent>
+            <extension base="base64Binary">
+                <attribute name="algorithm" type="string" use="required" />
+            </extension>
+        </simpleContent>
+    </complexType>
+</schema>
