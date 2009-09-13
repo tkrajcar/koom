@@ -53,6 +53,7 @@ public class SessionManager implements Runnable {
      * 
      * @see java.lang.Runnable#run()
      */
+    @SuppressWarnings("serial")
     @Override
     public void run() {
         // Set the look and feel.

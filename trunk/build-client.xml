@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="Koom client" default="package">
+	<import file="build-tasks.xml" />
+
 	<path id="compile.cp">
 		<fileset dir="lib">
 			<include name="compile/*.jar" />
@@ -10,13 +12,31 @@
 		<delete dir="bin" />
 		<delete dir="tests/bin" />
 		<delete file="dist/unsigned/koom.jar" />
+		<delete dir="gen" />
+	</target>
+
+	<target name="generate" description="Generate Koom client source" depends="generate-uptodate" unless="generate.uptodate">
+		<xjc srcfile="src/net/feem/koom/world/World.xsd" package="net.feem.koom.world.xml" />
+	</target>
+
+	<target name="generate-uptodate">
+		<uptodate property="generate.uptodate" srcfile="src/net/feem/koom/world/World.xsd" targetfile="gen/net/feem/koom/world/xml/package-info.java" />
 	</target>
 
 	<target name="compile" description="Compile Koom client" depends="compile-java, update-buildnumber" />
 
-	<target name="compile-java">
-		<mkdir dir="bin" />
-		<javac srcdir="src" destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
+	<target name="compile-java" depends="generate">
+		<copy todir="bin">
+			<fileset dir="src">
+				<include name="**/*.xsd" />
+			</fileset>
+		</copy>
+		<javac destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no">
+			<src>
+				<path location="gen" />
+				<path location="src" />
+			</src>
+		</javac>
 	</target>
 
 	<target name="update-buildnumber" if="compile.updated">
