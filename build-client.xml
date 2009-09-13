@@ -26,12 +26,7 @@
 				<include name="**/*.xsd" />
 			</fileset>
 		</copy>
-		<javac destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no">
-			<src>
-				<path location="gen" />
-				<path location="src" />
-			</src>
-		</javac>
+		<javac srcdir="src" destdir="bin" classpathref="compile.cp" source="1.6" target="1.6" debug="yes" updatedProperty="compile.updated" includeAntRuntime="no" />
 	</target>
 
 	<target name="update-buildnumber" if="compile.updated">
